@@ -1,0 +1,12 @@
+{
+  "name": "wordlight-load-test",
+  "version": "1.0.0",
+  "description": "Standalone stress-test tool for WordLight — opens many concurrent reader/backstage socket.io connections to test server CPU/memory under load. Not part of the WordLight server itself.",
+  "main": "load_test.js",
+  "scripts": {
+    "start": "node load_test.js"
+  },
+  "dependencies": {
+    "socket.io-client": "^4.7.5"
+  }
+}
