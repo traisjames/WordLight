@@ -372,7 +372,7 @@ step "Server configuration (.env)"
 
 if ! step_done "env-file-created"; then
   if [ ! -f "$ENV_FILE" ]; then
-    cp "$PROJECT_DIR/.env.example" "$ENV_FILE" || die "Couldn't create .env from .env.example."
+    cp "$PROJECT_DIR/env.example" "$ENV_FILE" || die "Couldn't create .env from env.example."
   fi
 
   echo "Auto-generating a secure session secret..."
