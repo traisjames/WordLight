@@ -1,0 +1,999 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" href="./favicon.png" sizes="32x32">
+  <link rel="icon" href="./favicon.png" sizes="192x192">
+  <link rel="apple-touch-icon" href="./favicon.png">
+  <title>WordLight — Controller</title>
+  <link rel="stylesheet" href="./styles.css">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      /* Script list text size/font — adjustable via the ⚙️ Text Settings
+         popover, independent of the reader/backstage caption display
+         (those use their own separate --font-size, set via /preferences).
+         Kept as its own variable rather than changing body's font-size
+         directly, so adjusting it only affects the caption text an
+         operator reads — not buttons, headers, or other UI chrome. */
+      --controller-font-size: 15px;
+      --controller-font-family: system-ui, -apple-system, sans-serif;
+    }
+
+
+    html, body { height: 100%; }
+
+    body {
+      transition: background-color 0.4s ease;
+    }
+    body.live-active {
+      --bg: #1a0e00;
+      background-color: #1a0e00;
+    }
+    body.osc-armed {
+      --surface:  #0d2117;
+      --surface2: #112b1f;
+      --border:   #1e4a31;
+      --border2:  #2a6341;
+    }
+
+    body {
+      display: flex; flex-direction: column;
+      background: var(--bg); color: var(--text);
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 15px; overflow: hidden;
+    }
+
+    /* ── Header ── */
+    header {
+      display: flex; align-items: center; gap: 0.75rem;
+      padding: 0.7rem 1rem; background: var(--surface);
+      border-bottom: 1px solid var(--border); flex-shrink: 0;
+      position: relative;
+    }
+    header h1 { font-size: 1rem; font-weight: 600; flex: 1; }
+    .status-logo {align-items: center; flex: 1;}
+    .iconlargeimg {height: 1rem; width: auto;}
+    .status-dot { width: 9px; height: 9px; border-radius: 50%; background: #ef4444; transition: background 0.3s; }
+    .status-dot.connected { background: #22c55e; }
+    .status-text { font-size: 0.78rem; color: var(--muted); }
+    .conn-status-wrap { display: flex; align-items: center; gap: 0.4rem; cursor: default; }
+    .audience-count {
+      font-size: 0.78rem; color: var(--text); display: flex; align-items: center;
+      gap: 0.3rem; padding: 0.2rem 0.55rem; background: var(--surface2);
+      border: 1px solid var(--border); border-radius: 5px; cursor: default;
+      white-space: nowrap;
+    }
+    .audience-count strong { color: #93c5fd; font-variant-numeric: tabular-nums; }
+    a.nav-link {
+      font-size: 0.8rem; color: var(--muted); text-decoration: none;
+      padding: 0.3rem 0.6rem; border-radius: 4px; transition: background 0.15s, color 0.15s;
+    }
+    a.nav-link:hover { background: var(--border); color: var(--text); }
+
+    /* ── Text Settings popover ── */
+    .text-settings-popover {
+      position: absolute; top: 3.2rem; right: 1rem; z-index: 50;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 0.9rem; width: 15rem;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+    .text-settings-row {
+      display: flex; align-items: center; gap: 0.5rem;
+      margin-bottom: 0.7rem; font-size: 0.8rem; color: var(--muted);
+    }
+    .text-settings-row label { width: 4.2rem; flex-shrink: 0; }
+    .text-settings-row input[type="range"] { flex: 1; }
+    .text-settings-row select {
+      flex: 1; background: var(--bg); color: var(--text);
+      border: 1px solid var(--border); border-radius: 5px;
+      padding: 0.3rem 0.4rem; font-size: 0.8rem;
+    }
+    #ctrlFontSizeLabel {
+      font-variant-numeric: tabular-nums; width: 3.2rem; text-align: right;
+      color: var(--text); flex-shrink: 0;
+    }
+    .text-settings-sample {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+      padding: 0.6rem 0.7rem; font-size: var(--controller-font-size);
+      font-family: var(--controller-font-family); color: var(--text);
+      word-break: break-word; margin-top: 0.2rem;
+    }
+
+    /* ── Toolbar ── */
+    .toolbar {
+      display: flex; align-items: center; gap: 0.6rem;
+      padding: 0.6rem 1rem; background: var(--surface);
+      border-bottom: 1px solid var(--border); flex-shrink: 0; flex-wrap: wrap;
+    }
+    .btn {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      background: var(--accent); color: #fff; border: none; border-radius: 6px;
+      padding: 0.45rem 0.9rem; font-size: 0.85rem; font-weight: 500;
+      cursor: pointer; transition: background 0.2s; white-space: nowrap;
+    }
+    .btn:hover { background: var(--accent-h); }
+    .btn.secondary { background: var(--border); color: var(--text); }
+    .btn.secondary:hover { background: #475569; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn.intermission-btn { background: #78350f; color: #fde68a; border: 1px solid #92400e; }
+    .btn.intermission-btn:hover { background: #92400e; }
+    .btn.intermission-btn.active { background: var(--amber); color: #1c1917; animation: intermission-pulse 2s infinite; }
+    .btn.intermission-btn.active:hover { background: #d97706; }
+    @keyframes intermission-pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(245,158,11,0.5); }
+      50%       { box-shadow: 0 0 0 6px rgba(245,158,11,0); }
+    }
+    #fileInput { display: none; }
+    .counter { font-size: 0.85rem; color: var(--muted); margin-left: auto; }
+    .counter strong { color: var(--text); }
+
+    /* ── Search Bar ── */
+    .search-bar {
+      display: none; align-items: center; gap: 0.5rem;
+      padding: 0.45rem 1rem; background: #0a1020;
+      border-bottom: 1px solid var(--border); flex-shrink: 0;
+    }
+    .search-bar.visible { display: flex; }
+    .search-icon { color: var(--muted); font-size: 0.9rem; flex-shrink: 0; }
+    #searchInput {
+      flex: 1; background: var(--surface); border: 1px solid var(--border);
+      border-radius: 6px; padding: 0.4rem 0.7rem; font-size: 0.9rem; color: var(--text); outline: none;
+    }
+    #searchInput:focus { border-color: var(--accent); }
+    .search-count { font-size: 0.78rem; color: var(--muted); min-width: 5em; text-align: right; }
+    .search-nav-btn {
+      background: var(--border); color: var(--text); border: none;
+      border-radius: 4px; padding: 0.3rem 0.5rem; cursor: pointer; font-size: 0.8rem;
+    }
+    .search-nav-btn:hover { background: #475569; }
+    .search-nav-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    .search-close-btn {
+      background: none; border: none; color: var(--muted);
+      font-size: 1rem; cursor: pointer; padding: 0.2rem 0.3rem; line-height: 1;
+    }
+    .search-close-btn:hover { color: var(--text); }
+
+    /* ── Script List ── */
+    .list-wrapper { flex: 1; overflow-y: auto; padding: 0.5rem 0; }
+    #lineList { list-style: none; }
+
+    #lineList li {
+      display: flex; align-items: flex-start; gap: 0.75rem;
+      padding: 0.55rem 1rem;
+      border-left: 3px solid transparent;
+      transition: background 0.1s, border-color 0.1s;
+      line-height: 1.5;
+    }
+    #lineList li:hover { background: rgba(99,102,241,0.08); }
+    #lineList li.current { background: var(--current-bg); border-left-color: var(--current-border); }
+    #lineList li.search-match { background: rgba(245,158,11,0.1); border-left-color: #78350f; }
+    #lineList li.search-match.search-focus { background: rgba(245,158,11,0.22); border-left-color: var(--amber); }
+
+    .line-num {
+      font-size: calc(var(--controller-font-size) * 0.8); color: var(--muted); min-width: 2.5em; text-align: right;
+      margin-top: 0.18em; font-variant-numeric: tabular-nums; user-select: none; flex-shrink: 0;
+    }
+
+    /* The body of each line: caption + note stacked vertically */
+    .line-body { flex: 1; min-width: 0; cursor: pointer; }
+
+    .line-top {
+      display: flex; align-items: flex-start; gap: 0.5rem;
+    }
+
+    .line-text {
+      flex: 1; word-break: break-word; white-space: pre-wrap;
+      font-size: var(--controller-font-size); font-family: var(--controller-font-family);
+    }
+    li.current .line-text { color: #93c5fd; font-weight: 500; }
+
+    /* Small pill shown on lines that have a note (non-current lines) */
+    .note-pill {
+      font-size: 0.7rem; flex-shrink: 0; margin-top: 0.2em;
+      opacity: 0.5; user-select: none;
+    }
+    /*li.current .note-pill { display: none; } /* hidden when note area is shown instead */
+
+    /* ── Note area — only visible on the current line ── */
+    .note-area {
+      display: none;          /* hidden by default */
+      margin-top: 0.5rem;
+      background: var(--note-bg);
+      border: 1px solid var(--note-border);
+      border-radius: 6px;
+      padding: 0.45rem 0.6rem;
+      gap: 0.4rem;
+    }
+    li.current .note-area { display: flex; align-items: flex-start; } /* shown on current line */
+    li.current .note-area-empty { display: hidden; align-items: flex-start; } /* shown on current line */
+
+    .note-area-icon { font-size: 0.8rem; flex-shrink: 0; margin-top: 0.1em; opacity: 0.7; }
+
+    .note-display-text {
+      flex: 1; font-size: calc(var(--controller-font-size) * 0.85); color: var(--note-text);
+      font-style: italic; line-height: 1.45; word-break: break-word; white-space: pre-wrap;
+      min-width: 0;
+    }
+    .note-display-text.empty { color: var(--muted); font-style: normal; opacity: 0.6; display: hidden;}
+
+    .note-edit-btn {
+      flex-shrink: 0; background: none; border: none;
+      color: var(--muted); cursor: pointer; font-size: 0.8rem;
+      padding: 0.1rem 0.2rem; border-radius: 3px; line-height: 1;
+      transition: color 0.15s, background 0.15s;
+    }
+    .note-edit-btn:hover { color: var(--note-text); background: rgba(134,239,172,0.1); }
+
+    /* Note inline editor (replaces note-area content while editing) */
+    .note-textarea {
+      flex: 1; background: transparent; border: none; outline: none;
+      font-size: calc(var(--controller-font-size) * 0.85); color: var(--note-text); font-style: italic;
+      line-height: 1.45; resize: none; font-family: inherit;
+      min-height: 1.45em; width: 100%;
+    }
+    .note-save-btn {
+      flex-shrink: 0; background: var(--note-border); border: none;
+      color: var(--note-text); cursor: pointer; font-size: 0.72rem; font-weight: 600;
+      padding: 0.2rem 0.5rem; border-radius: 3px; line-height: 1.4; white-space: nowrap;
+    }
+    .note-save-btn:hover { background: #3d6b3d; }
+
+    mark.search-hl { background: rgba(245,158,11,0.4); color: inherit; border-radius: 2px; padding: 0 1px; }
+
+    /* Empty state */
+    .empty-state {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      height: 100%; color: var(--muted); gap: 0.75rem; text-align: center; padding: 2rem;
+    }
+    .empty-state .icon { font-size: 3rem; }
+
+    /* ── Footer ── */
+    footer {
+      display: flex; gap: 1.5rem; padding: 0.5rem 1rem;
+      background: var(--surface); border-top: 1px solid var(--border);
+      font-size: 0.78rem; color: var(--muted); flex-shrink: 0; flex-wrap: wrap;
+    }
+    kbd {
+      display: inline-block; background: var(--border); color: var(--text);
+      border-radius: 4px; padding: 0.05rem 0.4rem; font-size: 0.75rem; font-family: monospace;
+    }
+
+    /* ── Color Toolbar ── */
+    .color-toolbar {
+      display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap;
+      padding: 0.45rem 1rem; background: #0a1020;
+      border-bottom: 1px solid var(--border); flex-shrink: 0;
+    }
+    .color-toolbar-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-right: 0.25rem; user-select: none; }
+    .color-btn { width: 1.45rem; height: 1.45rem; border-radius: 50%; border: 2px solid transparent; cursor: pointer; transition: transform 0.1s, border-color 0.1s; flex-shrink: 0; }
+    .color-btn:hover { transform: scale(1.2); border-color: rgba(255,255,255,0.5); }
+    .color-toolbar-sep { width: 1px; height: 1rem; background: var(--border); margin: 0 0.2rem; }
+    .clear-tag-btn { font-size: 0.72rem; padding: 0.2rem 0.5rem; background: var(--border); color: var(--muted); border: none; border-radius: 4px; cursor: pointer; }
+    .clear-tag-btn:hover { background: #475569; color: var(--text); }
+
+    /* ── Live Panel ── */
+    .live-panel {
+      flex-shrink: 0; background: var(--surface); border-top: 1px solid var(--border);
+      padding: 0.6rem 1rem; display: flex; gap: 0.6rem; align-items: flex-end;
+    }
+    .live-panel-inner { flex: 1; display: flex; flex-direction: column; gap: 0.35rem; }
+    .live-label { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); display: flex; align-items: center; gap: 0.4rem; user-select: none; }
+    .live-indicator { width: 7px; height: 7px; border-radius: 50%; background: #ef4444; transition: background 0.2s; }
+    .live-indicator.active { background: var(--amber); animation: livepulse 1s infinite; }
+    @keyframes livepulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+    .live-preview { font-size: 0.78rem; color: var(--muted); padding: 0.3rem 0; min-height: 1.4em; line-height: 1.5; word-break: break-word; }
+    .live-preview.has-content { color: var(--text); opacity: 0.85; }
+    #liveInput {
+      width: 100%; background: #0f172a; border: 1px solid var(--border); border-radius: 6px;
+      padding: 0.55rem 0.75rem; font-size: 0.95rem; color: var(--text); outline: none;
+      resize: none; line-height: 1.4; min-height: 2.5rem; font-family: inherit;
+      transition: border-color 0.2s, box-shadow 0.2s, min-height 0.2s ease;
+      overflow: hidden;
+    }
+    #liveInput:focus { border-color: var(--amber); box-shadow: 0 0 0 2px rgba(245,158,11,0.2); }
+    #liveInput.has-content { border-color: var(--amber); min-height: 4.8rem; }
+    .btn.clear-btn { background: #374151; color: var(--muted); font-size: 0.8rem; padding: 0.45rem 0.75rem; align-self: flex-end; }
+    .btn.clear-btn:hover { background: #4b5563; color: var(--text); }
+    .btn.clear-btn.danger { background: #450a0a; color: #fca5a5; }
+    .btn.clear-btn.danger:hover { background: #7f1d1d; }
+
+    /* Scrollbar */
+    .list-wrapper::-webkit-scrollbar { width: 6px; }
+    .list-wrapper::-webkit-scrollbar-track { background: transparent; }
+    .list-wrapper::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <span>🎙️</span>
+  <h1>Caption Controller</h1>
+  <span class="status-logo" id="headerlogo">
+     <img class="iconlargeimg" id="theaterLogo" alt="Theater logo" src="./iconlarge.png">
+  </span>
+  <span class="conn-status-wrap" id="connStatusWrap">
+    <span class="status-dot" id="statusDot"></span>
+    <span class="status-text" id="statusText">Connecting…</span>
+  </span>
+  <span class="audience-count" id="audienceCount" title="Connected audience readers (backstage not included)">
+    👥 <strong id="audienceCountNum">—</strong>
+  </span>
+  <button class="nav-link" id="textSettingsBtn" onclick="toggleTextSettings()" style="border:none;background:none;cursor:pointer;font:inherit" title="Adjust script text size and font">⚙️ Text Size</button>
+  <a class="nav-link" href="/logging">📊 Logging</a>
+  <a class="nav-link" href="/help">❓ Help</a>
+  <a class="nav-link" href="/logout">Sign out</a>
+
+  <!-- Text Settings popover — adjusts the SCRIPT LIST's text size/font only.
+       Separate from /preferences, which controls the reader/backstage
+       projection display — this is scoped to what the operator reads while
+       running the show. Applies live and saves to its own localStorage key
+       (controllerPrefs) so it doesn't interact with reader/backstage prefs.
+       Nested inside <header>, which has position:relative, so this
+       position:absolute panel anchors correctly beneath the header rather
+       than the whole page. -->
+  <div class="text-settings-popover" id="textSettingsPopover" style="display:none">
+    <div class="text-settings-row">
+      <label for="ctrlFontSize">Text Size</label>
+      <input type="range" id="ctrlFontSize" min="12" max="28" step="1" value="15" />
+      <span id="ctrlFontSizeLabel">15px</span>
+    </div>
+    <div class="text-settings-row">
+      <label for="ctrlFontFamily">Font</label>
+      <select id="ctrlFontFamily">
+        <option value="system-ui, -apple-system, sans-serif">System Default</option>
+        <option value="'OpenDyslexic', sans-serif">OpenDyslexic (dyslexia-friendly)</option>
+        <option value="'Comic Sans MS', 'Comic Sans', cursive">Comic Sans</option>
+        <option value="Arial, sans-serif">Arial</option>
+        <option value="Helvetica, sans-serif">Helvetica</option>
+        <option value="Georgia, serif">Georgia</option>
+        <option value="'Courier New', monospace">Courier</option>
+        <option value="'Times New Roman', serif">Times New Roman</option>
+        <option value="Verdana, sans-serif">Verdana</option>
+        <option value="Tahoma, sans-serif">Tahoma</option>
+      </select>
+    </div>
+    <div class="text-settings-sample" id="ctrlFontSample">[red]MARLIN:[/] Sample script text</div>
+    <button class="btn btn-secondary" style="width:100%;margin-top:0.5rem" onclick="resetTextSettings()">Reset to Default</button>
+  </div>
+</header>
+
+<div class="toolbar">
+  <button class="btn" id="loadBtn" onclick="document.getElementById('fileInput').click()">📂 Load File</button>
+  <input type="file" id="fileInput" accept=".txt,.srt,.vtt,.csv,text/*" />
+  <button class="btn secondary" id="prevBtn" onclick="navigate(-1)" disabled>▲ Prev</button>
+  <button class="btn secondary" id="nextBtn" onclick="navigate(1)" disabled>▼ Next</button>
+  <button class="btn intermission-btn" id="intermissionBtn" onclick="toggleIntermission()" disabled>⏸ Intermission</button>
+  <button class="btn secondary" id="searchToggleBtn" onclick="toggleSearch()" disabled title="Search lines (Ctrl+F)">🔍 Search</button>
+  <span class="counter" id="counter"></span>
+</div>
+
+<div class="search-bar" id="searchBar">
+  <span class="search-icon">🔍</span>
+  <input type="text" id="searchInput" placeholder="Search lines…" autocomplete="off" spellcheck="false" />
+  <span class="search-count" id="searchCount"></span>
+  <button class="search-nav-btn" id="searchPrev" onclick="searchStep(-1)">▲</button>
+  <button class="search-nav-btn" id="searchNext" onclick="searchStep(1)">▼</button>
+  <button class="search-close-btn" onclick="closeSearch()">✕</button>
+</div>
+
+
+<div class="list-wrapper" id="listWrapper">
+  <div class="empty-state" id="emptyState">
+    <span class="icon">📄</span>
+    <strong>No file loaded</strong>
+    <span>Click <em>Load File</em> to open a .txt script</span>
+  </div>
+  <ul id="lineList"></ul>
+</div>
+
+<footer>
+  <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+  <span><kbd>Space</kbd> next line</span>
+  <span><kbd>Home</kbd> first &nbsp;<kbd>End</kbd> last</span>
+  <span><kbd>Ctrl+F</kbd> or <kbd>/</kbd> search</span>
+  <span><kbd>I</kbd> intermission</span>
+</footer>
+
+<div class="live-panel">
+  <div class="live-panel-inner">
+    <div class="live-label">
+      <span class="live-indicator" id="liveIndicator"></span>
+      Live Type — broadcasts to readers as you type
+    </div>
+    <div class="live-preview" id="livePreview">Preview will appear here as you type…</div>
+    <textarea id="liveInput" rows="1" placeholder="Type here to send a live caption override…"></textarea>
+  </div>
+  <button class="btn clear-btn" id="clearBtn" onclick="clearLive()">✕ Clear</button>
+</div>
+
+<script src="./global.js"></script>
+<script>
+  // THEATER_NAME comes from global.js — set once it's loaded.
+  document.getElementById('theaterLogo').alt = THEATER_NAME;
+</script>
+<script>
+  // ── Controller Text Settings ────────────────────────────────────────────
+  // Adjusts the SCRIPT LIST's text size/font — separate from /preferences,
+  // which controls the reader/backstage projection display. Saved to its
+  // own localStorage key so the two never interact with each other.
+  const CONTROLLER_PREFS_KEY = 'controllerPrefs';
+
+  function applyControllerPrefs(prefs) {
+    document.documentElement.style.setProperty('--controller-font-size', prefs.fontSize + 'px');
+    document.documentElement.style.setProperty('--controller-font-family', prefs.fontFamily);
+  }
+
+  function loadControllerPrefs() {
+    let prefs = { fontSize: 15, fontFamily: 'system-ui, -apple-system, sans-serif' };
+    try {
+      const saved = JSON.parse(localStorage.getItem(CONTROLLER_PREFS_KEY) || '{}');
+      if (saved.fontSize)   prefs.fontSize   = saved.fontSize;
+      if (saved.fontFamily) prefs.fontFamily = saved.fontFamily;
+    } catch (e) { /* corrupt localStorage value — fall back to defaults */ }
+    return prefs;
+  }
+
+  function saveControllerPrefs(prefs) {
+    localStorage.setItem(CONTROLLER_PREFS_KEY, JSON.stringify(prefs));
+  }
+
+  // Apply saved (or default) preferences immediately, before the script
+  // list first renders — avoids a visible flash of default size that then
+  // jumps to the saved size a moment later.
+  let controllerPrefs = loadControllerPrefs();
+  applyControllerPrefs(controllerPrefs);
+
+  const ctrlFontSizeInput   = document.getElementById('ctrlFontSize');
+  const ctrlFontSizeLabel   = document.getElementById('ctrlFontSizeLabel');
+  const ctrlFontFamilySelect = document.getElementById('ctrlFontFamily');
+  const ctrlFontSample      = document.getElementById('ctrlFontSample');
+  const textSettingsPopover = document.getElementById('textSettingsPopover');
+
+  function syncTextSettingsUI() {
+    ctrlFontSizeInput.value = controllerPrefs.fontSize;
+    ctrlFontSizeLabel.textContent = controllerPrefs.fontSize + 'px';
+    ctrlFontFamilySelect.value = controllerPrefs.fontFamily;
+    // Sample renders with the SAME color-tag parser used for real script
+    // lines, so it actually looks like a caption rather than showing the
+    // raw [red]...[/] markup.
+    ctrlFontSample.innerHTML = parseColorTags('[red]MARLIN:[/] Sample script text');
+  }
+  syncTextSettingsUI();
+
+  ctrlFontSizeInput.addEventListener('input', () => {
+    controllerPrefs.fontSize = parseInt(ctrlFontSizeInput.value, 10);
+    ctrlFontSizeLabel.textContent = controllerPrefs.fontSize + 'px';
+    applyControllerPrefs(controllerPrefs);
+    saveControllerPrefs(controllerPrefs);
+  });
+
+  ctrlFontFamilySelect.addEventListener('change', () => {
+    controllerPrefs.fontFamily = ctrlFontFamilySelect.value;
+    applyControllerPrefs(controllerPrefs);
+    saveControllerPrefs(controllerPrefs);
+  });
+
+  function toggleTextSettings() {
+    const isOpen = textSettingsPopover.style.display !== 'none';
+    textSettingsPopover.style.display = isOpen ? 'none' : 'block';
+    if (!isOpen) syncTextSettingsUI();
+  }
+
+  function resetTextSettings() {
+    controllerPrefs = { fontSize: 15, fontFamily: 'system-ui, -apple-system, sans-serif' };
+    applyControllerPrefs(controllerPrefs);
+    saveControllerPrefs(controllerPrefs);
+    syncTextSettingsUI();
+  }
+
+  // Close the popover on outside click or Escape — same dismissal pattern
+  // used elsewhere in the app (e.g. the search bar).
+  document.addEventListener('click', (e) => {
+    if (textSettingsPopover.style.display === 'none') return;
+    if (textSettingsPopover.contains(e.target) || e.target.id === 'textSettingsBtn') return;
+    textSettingsPopover.style.display = 'none';
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && textSettingsPopover.style.display !== 'none') {
+      textSettingsPopover.style.display = 'none';
+    }
+  });
+</script>
+<script>
+  // Populate the connection status tooltip with every detected network
+  // interface (WiFi, wired, etc.) and the ports in use — so hovering over
+  // it shows exactly what to give someone trying to connect, without
+  // needing to SSH into the Pi or check the startup logs. Fetched once on
+  // load since this doesn't change while the server is running.
+  fetch('/api/network-info')
+    .then(r => r.json())
+    .then(info => {
+      const lines = [];
+      const ifaceLabels = { wlan0: 'WiFi', eth0: 'Wired' };
+      for (const [name, ip] of Object.entries(info.interfaces || {})) {
+        const label = ifaceLabels[name] || name;
+        lines.push(`${label}: ${ip}`);
+      }
+      if (lines.length === 0) lines.push('No network interfaces detected');
+      lines.push('');
+      lines.push(`Reader Port: ${info.port}    OSC Port: ${info.oscPort}`);
+      document.getElementById('connStatusWrap').title = lines.join('\n');
+    })
+    .catch(() => {
+      // Not authenticated, or the request failed — leave the default (no
+      // tooltip) rather than showing broken/stale info.
+    });
+</script>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+
+  // ── State ────────────────────────────────────────────────────────────────────
+  let lines              = [];  // Caption texts sent to readers
+  let notes              = [];  // Speaker notes — parallel array, never sent to readers
+  let currentIndex       = -1;
+  let intermissionActive = false;
+
+  // ── Search state ─────────────────────────────────────────────────────────────
+  let searchQuery   = '';
+  let matchIndices  = [];
+  let matchCursor   = 0;
+  let searchVisible = false;
+
+
+  // ── Socket ───────────────────────────────────────────────────────────────────
+  const socket = io({ query: { type: 'controller' } });
+
+  socket.on('connect',    () => setStatus(true));
+  socket.on('disconnect', () => setStatus(false));
+
+  socket.on('state-update', (data) => {
+    // Full script sync from another controller tab (e.g. after file load)
+    if (data.lines && data.lines.length > 0 && lines.length === 0) {
+      lines = []; notes = [];
+      for (const raw of data.lines) {
+        const pipe = raw.indexOf('|');
+        if (pipe === -1) { lines.push(raw);                       notes.push(''); }
+        else             { lines.push(raw.slice(0, pipe).trim()); notes.push(raw.slice(pipe + 1).trim()); }
+      }
+      currentIndex = data.currentIndex;
+      renderList();
+    }
+    // Intermission state sync
+    if (typeof data.intermission === 'boolean' && data.intermission !== intermissionActive) {
+      intermissionActive = data.intermission;
+      updateIntermissionBtn();
+    }
+    // Live text sync
+    if (typeof data.liveText === 'string') {
+      const ta = document.getElementById('liveInput');
+      if (ta && ta.value !== data.liveText) {
+        ta.value = data.liveText;
+        ta.dispatchEvent(new Event('input'));
+      }
+    }
+  });
+
+  // Lightweight index-only update from another controller tab
+  socket.on('osc-arm', (data) => {
+    document.body.classList.toggle('osc-armed', !!data.armed);
+  });
+
+  // Live audience-only reader count (backstage excluded) — server recomputes
+  // and pushes this on every reader connect/disconnect, so no polling needed.
+  socket.on('audience-count', (data) => {
+    const el = document.getElementById('audienceCountNum');
+    if (el && typeof data.count === 'number') el.textContent = data.count;
+  });
+
+  socket.on('index-update', (data) => {
+    if (typeof data.currentIndex !== 'number') return;
+    if (data.currentIndex === currentIndex) return;
+    //closeNoteEditor();
+    currentIndex = data.currentIndex;
+    updateCurrentLine();
+  });
+
+  function setStatus(connected) {
+    document.getElementById('statusDot').className    = 'status-dot' + (connected ? ' connected' : '');
+    document.getElementById('statusText').textContent = connected ? 'Live' : 'Disconnected';
+  }
+
+  // ── File Loading ──────────────────────────────────────────────────────────────
+  document.getElementById('fileInput').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const rawLines = ev.target.result
+        .split(/\r?\n/)
+        .map(l => l.trim())
+        .filter(l => l.length > 0);
+
+      // Split each raw line on the first '|' only
+      // Left side → caption (sent to readers)
+      // Right side → note  (shown only on controller)
+      lines = [];
+      notes = [];
+      for (const raw of rawLines) {
+        const pipePos = raw.indexOf('|');
+        if (pipePos === -1) {
+          lines.push(raw);
+          notes.push('');
+        } else {
+          lines.push(raw.slice(0, pipePos).trim());
+          notes.push(raw.slice(pipePos + 1).trim());
+        }
+      }
+
+      currentIndex = lines.length > 0 ? 0 : -1;
+      closeSearch();
+      renderList();
+      loadScript();
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  });
+
+  // ── Navigation ────────────────────────────────────────────────────────────────
+  function navigate(delta) {
+    if (lines.length === 0) return;
+    const next = currentIndex + delta;
+    if (next < 0 || next >= lines.length) return;
+    //closeNoteEditor();
+    currentIndex = next;
+    updateCurrentLine();
+    pushIndex();
+  }
+
+  function goTo(index) {
+    if (index < 0 || index >= lines.length) return;
+    //closeNoteEditor();
+    currentIndex = index;
+    updateCurrentLine();
+    pushIndex();
+  }
+
+  document.addEventListener('keydown', (e) => {
+    const tag = document.activeElement.tagName;
+
+    if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+      e.preventDefault(); openSearch(); return;
+    }
+
+    if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag)) {
+      if (e.key === 'Escape' && searchVisible) closeSearch();
+      return;
+    }
+
+    if (lines.length === 0) return;
+
+    switch (e.key) {
+      case 'ArrowDown':
+      case 'ArrowRight': e.preventDefault(); navigate(1);  break;
+      case 'ArrowUp':
+      case 'ArrowLeft':  e.preventDefault(); navigate(-1); break;
+      case ' ':          e.preventDefault(); navigate(1);  break;
+      case 'Home':       e.preventDefault(); goTo(0);      break;
+      case 'End':        e.preventDefault(); goTo(lines.length - 1); break;
+      case '/':          e.preventDefault(); openSearch(); break;
+      case 'i': case 'I': e.preventDefault(); toggleIntermission(); break;
+    }
+  });
+
+  // ── Rendering ─────────────────────────────────────────────────────────────────
+  function renderList() {
+    const list    = document.getElementById('lineList');
+    const empty   = document.getElementById('emptyState');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+    const intBtn  = document.getElementById('intermissionBtn');
+    const srchBtn = document.getElementById('searchToggleBtn');
+
+    if (lines.length === 0) {
+      list.innerHTML       = '';
+      empty.style.display  = 'flex';
+      prevBtn.disabled     = true;
+      nextBtn.disabled     = true;
+      intBtn.disabled      = true;
+      srchBtn.disabled     = true;
+      document.getElementById('counter').textContent = '';
+      return;
+    }
+
+    empty.style.display = 'none';
+    prevBtn.disabled    = false;
+    nextBtn.disabled    = false;
+    intBtn.disabled     = false;
+    srchBtn.disabled    = false;
+
+    //  Render all lines as a list
+    list.innerHTML = lines.map((line, i) => {
+      const isCurrent = i === currentIndex;
+      const note      = notes[i] || '';
+      const hasNote   = note.length > 0;
+
+      const captionHtml = searchQuery
+        ? highlightSearchInLine(line, searchQuery)
+        : parseColorTags(line);
+
+      // Note pill: shown on non-current lines that have a note
+      const pillHtml = hasNote
+        ? '<span class="note-pill" title="Has speaker note">📝</span>'
+        : '';
+
+      // Note area: always rendered, CSS hides it on non-current lines
+      const noteAreaHtml = buildNoteAreaHtml(i, note);
+
+      return '<li id="line-' + i + '" class="' + (isCurrent ? 'current' : '') + '">'
+        + '<span class="line-num">' + (i + 1) + '</span>'
+        + '<div class="line-body">'
+        +   '<div class="line-top" onclick="goTo(' + i + ')">'
+        +     '<span class="line-text">' + captionHtml + '</span>'
+        +     pillHtml
+        +   '</div>'
+        +   noteAreaHtml
+        + '</div>'
+        + '</li>';
+    }).join('');
+
+    applySearchClasses();
+    scrollToCurrentLine();
+    updateCounter();
+  }
+
+  /**
+   * Build the note area HTML for a given line index.
+   * This is always rendered; CSS (li.current .note-area { display:flex })
+   * makes it visible only when the line is active.
+   */
+  function buildNoteAreaHtml(i, note) {
+    const hasNote   = note.trim().length > 0;
+    const escapedNote = escHtml(note);
+    const displayText = hasNote
+      ? '<div class="note-area-empty" id="note-area-' + i + '">'
+      + '<span class="note-display-text">' + escapedNote + '</span>'
+      + '</div>'
+      : '';
+
+    return displayText
+  }
+
+  // Fast-path: update current line without full re-render
+  function updateCurrentLine() {
+    document.querySelectorAll('#lineList li.current').forEach(el => el.classList.remove('current'));
+    const el = document.getElementById('line-' + currentIndex);
+    if (el) {
+      el.classList.add('current');
+      scrollToCurrentLine();
+    }
+    updateCounter();
+  }
+
+  function scrollToCurrentLine() {
+    const el = document.getElementById('line-' + currentIndex);
+    if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }
+
+  function updateCounter() {
+    const el = document.getElementById('counter');
+    if (lines.length === 0) { el.textContent = ''; return; }
+    const note = notes[currentIndex] || '';
+    el.innerHTML = 'Line <strong>' + (currentIndex + 1) + '</strong> of <strong>' + lines.length + '</strong>'
+      + (note ? ' &nbsp;📝' : '');
+  }
+
+
+  // ── Push to server ───────────────────────────────────────────────────────────
+  // Called once when a file is loaded. Sends raw lines (caption|note) so the
+  // server can relay notes to other controller tabs and backstage.
+  // Notes are stripped client-side by reader.html; backstage.html displays them.
+  function loadScript() {
+    const rawLines = lines.map((caption, i) =>
+      notes[i] ? caption + '|' + notes[i] : caption
+    );
+    socket.emit('load-script', { lines: rawLines, currentIndex });
+  }
+
+  // Called on every navigation — sends only the new index. The server already
+  // has the full script, so there's no need to retransmit it.
+  function pushIndex() {
+    socket.emit('update-index', { currentIndex });
+  }
+
+  // ── Intermission ──────────────────────────────────────────────────────────────
+  function toggleIntermission() {
+    intermissionActive = !intermissionActive;
+    updateIntermissionBtn();
+    socket.emit('set-intermission', { intermission: intermissionActive });
+  }
+
+  function updateIntermissionBtn() {
+    const btn = document.getElementById('intermissionBtn');
+    btn.textContent = intermissionActive ? '▶ Resume' : '⏸ Intermission';
+    btn.classList.toggle('active', intermissionActive);
+  }
+
+  // ── Search ────────────────────────────────────────────────────────────────────
+  const searchBar     = document.getElementById('searchBar');
+  const searchInput   = document.getElementById('searchInput');
+  const searchCount   = document.getElementById('searchCount');
+  const searchPrevBtn = document.getElementById('searchPrev');
+  const searchNextBtn = document.getElementById('searchNext');
+
+  function openSearch() {
+    searchVisible = true;
+    searchBar.classList.add('visible');
+    document.getElementById('searchToggleBtn').textContent = '✕ Search';
+    searchInput.focus();
+    searchInput.select();
+    runSearch();
+  }
+
+  function closeSearch() {
+    searchVisible = false;
+    searchBar.classList.remove('visible');
+    document.getElementById('searchToggleBtn').textContent = '🔍 Search';
+    searchQuery = ''; matchIndices = []; matchCursor = 0;
+    searchInput.value = ''; searchCount.textContent = '';
+    if (lines.length > 0) renderList();
+  }
+
+  function toggleSearch() {
+    if (searchVisible) closeSearch(); else openSearch();
+  }
+
+  searchInput.addEventListener('input', () => {
+    searchQuery = searchInput.value; matchCursor = 0; runSearch();
+  });
+
+  searchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.stopPropagation(); closeSearch(); return; }
+    if (e.key === 'Enter')  { e.preventDefault(); searchStep(e.shiftKey ? -1 : 1); return; }
+    if (e.key === 'F3')     { e.preventDefault(); searchStep(e.shiftKey ? -1 : 1); return; }
+    e.stopPropagation();
+  });
+
+  function runSearch() {
+    if (!searchQuery.trim()) {
+      matchIndices = []; searchCount.textContent = '';
+      searchPrevBtn.disabled = true; searchNextBtn.disabled = true;
+      if (lines.length > 0) renderList();
+      return;
+    }
+    const q = searchQuery.toLowerCase();
+    // Search both caption text and notes
+    matchIndices = lines
+      .map((line, i) => ({
+        i,
+        plain: (stripColorTags(line) + ' ' + (notes[i] || '')).toLowerCase()
+      }))
+      .filter(({ plain }) => plain.includes(q))
+      .map(({ i }) => i);
+
+    if (matchCursor >= matchIndices.length) matchCursor = 0;
+    updateSearchCount();
+    renderList();
+    scrollToMatch();
+  }
+
+  function searchStep(delta) {
+    if (matchIndices.length === 0) return;
+    matchCursor = (matchCursor + delta + matchIndices.length) % matchIndices.length;
+    updateSearchCount(); applySearchClasses(); scrollToMatch();
+  }
+
+  function scrollToMatch() {
+    if (matchIndices.length === 0) return;
+    const el = document.getElementById('line-' + matchIndices[matchCursor]);
+    if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }
+
+  function updateSearchCount() {
+    searchCount.textContent = matchIndices.length === 0
+      ? (searchQuery ? 'No matches' : '')
+      : (matchCursor + 1) + ' / ' + matchIndices.length;
+    searchPrevBtn.disabled = matchIndices.length < 2;
+    searchNextBtn.disabled = matchIndices.length < 2;
+  }
+
+  function applySearchClasses() {
+    document.querySelectorAll('#lineList li.search-match, #lineList li.search-focus').forEach(el => {
+      el.classList.remove('search-match', 'search-focus');
+    });
+    if (!searchQuery.trim() || matchIndices.length === 0) return;
+    matchIndices.forEach((lineIdx, cursor) => {
+      const el = document.getElementById('line-' + lineIdx);
+      if (!el) return;
+      el.classList.add('search-match');
+      if (cursor === matchCursor) el.classList.add('search-focus');
+    });
+  }
+
+  function highlightSearchInLine(rawLine, query) {
+    const colorHtml = parseColorTags(rawLine);
+    if (!query.trim()) return colorHtml;
+    const q = query.toLowerCase();
+    let result = '', i = 0;
+    while (i < colorHtml.length) {
+      if (colorHtml[i] === '<') {
+        const end = colorHtml.indexOf('>', i);
+        if (end === -1) { result += colorHtml.slice(i); break; }
+        result += colorHtml.slice(i, end + 1); i = end + 1; continue;
+      }
+      const chunk = colorHtml.slice(i, i + q.length);
+      if (chunk.toLowerCase() === q) {
+        result += '<mark class="search-hl">' + chunk + '</mark>'; i += q.length;
+      } else { result += colorHtml[i]; i++; }
+    }
+    return result;
+  }
+
+  // ── Color Tag System ──────────────────────────────────────────────────────────
+
+  function insertColor(name) {
+    const ta = document.getElementById('liveInput');
+    const start = ta.selectionStart, end = ta.selectionEnd, val = ta.value;
+    const open = '[' + name + ']', close = '[/]';
+    if (start === end) {
+      ta.value = val.slice(0, start) + open + close + val.slice(start);
+      ta.setSelectionRange(start + open.length, start + open.length);
+    } else {
+      const sel = val.slice(start, end);
+      ta.value  = val.slice(0, start) + open + sel + close + val.slice(end);
+      ta.setSelectionRange(start, start + open.length + sel.length + close.length);
+    }
+    ta.focus();
+    ta.dispatchEvent(new Event('input'));
+  }
+
+  function stripTagsFromLive() {
+    const ta = document.getElementById('liveInput');
+    ta.value = stripColorTags(ta.value);
+    ta.dispatchEvent(new Event('input'));
+    ta.focus();
+  }
+
+  // ── Live Type ─────────────────────────────────────────────────────────────────
+  const liveInput     = document.getElementById('liveInput');
+  const liveIndicator = document.getElementById('liveIndicator');
+  const clearBtn      = document.getElementById('clearBtn');
+  const livePreview   = document.getElementById('livePreview');
+
+  liveInput.addEventListener('input', () => {
+    const text = liveInput.value;
+    liveInput.style.height = 'auto';
+    liveInput.style.height = liveInput.scrollHeight + 'px';
+    const hasContent = text.trim().length > 0;
+    liveInput.classList.toggle('has-content', hasContent);
+    liveIndicator.classList.toggle('active', hasContent);
+    document.body.classList.toggle('live-active', hasContent);
+    clearBtn.classList.toggle('danger', hasContent);
+    livePreview.innerHTML = hasContent ? parseColorTags(text) : 'Preview will appear here as you type…';
+    livePreview.classList.toggle('has-content', hasContent);
+    socket.emit('update-live-text', { liveText: text });
+  });
+
+  function clearLive() {
+    liveInput.value = '';
+    liveInput.style.height = '';
+    liveInput.classList.remove('has-content');
+    liveIndicator.classList.remove('active');
+    document.body.classList.remove('live-active');
+    clearBtn.classList.remove('danger');
+    livePreview.innerHTML = 'Preview will appear here as you type…';
+    livePreview.classList.remove('has-content');
+    socket.emit('update-live-text', { liveText: '' });
+    liveInput.focus();
+  }
+
+  liveInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { clearLive(); liveInput.blur(); }
+    e.stopPropagation();
+  });
+
+</script>
+</body>
+</html>

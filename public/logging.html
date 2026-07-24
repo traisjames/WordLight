@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" href="./favicon.png" sizes="32x32">
+  <link rel="icon" href="./favicon.png" sizes="192x192">
+  <link rel="apple-touch-icon" href="./favicon.png">
+  <title>WordLight — Logging</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, sans-serif;
+    }
+
+    /* ── Header ── */
+    header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.7rem 1rem;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+
+    header h1 {
+      font-size: 1rem;
+      font-weight: 600;
+      flex: 1;
+    }
+
+    a.nav-link {
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-decoration: none;
+      padding: 0.3rem 0.6rem;
+      border-radius: 4px;
+      transition: background 0.15s;
+    }
+    a.nav-link:hover { background: var(--border); color: var(--text); }
+
+    /* ── Content ── */
+    .content {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 1.5rem 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    /* ── Stat Cards ── */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 1rem;
+    }
+
+    @media (max-width: 480px) {
+      .stats-grid { grid-template-columns: 1fr 1fr; }
+    }
+
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem 1rem;
+      text-align: center;
+    }
+
+    .stat-number {
+      font-size: 2.8rem;
+      font-weight: 700;
+      color: #f1f5f9;
+      line-height: 1;
+      font-variant-numeric: tabular-nums;
+      transition: all 0.4s ease;
+    }
+
+    .stat-number.flash {
+      color: #86efac;
+      transform: scale(1.08);
+    }
+
+    .stat-label {
+      font-size: 0.78rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-top: 0.4rem;
+    }
+
+    /* ── Live Viewer Indicator ── */
+    .live-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+
+    .live-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #22c55e;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.4; }
+    }
+
+    /* ── Info Panel ── */
+    .info-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .info-panel h2 {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      padding: 0.6rem 1rem;
+      background: rgba(0,0,0,0.2);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.9rem;
+    }
+    .info-row:last-child { border-bottom: none; }
+    .info-row span:last-child { color: var(--muted); font-family: monospace; }
+
+    /* ── Breakdown table ── */
+    .breakdown-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .breakdown-panel h2 {
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      padding: 0.6rem 1rem;
+      background: rgba(0,0,0,0.2);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .breakdown-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.6rem 1rem;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.88rem;
+    }
+    .breakdown-row:last-child { border-bottom: none; }
+
+    .breakdown-label {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .prefix-badge {
+      font-family: monospace;
+      font-size: 0.75rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0.1rem 0.4rem;
+      color: #93c5fd;
+    }
+
+    .breakdown-count {
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: #f1f5f9;
+      font-variant-numeric: tabular-nums;
+      min-width: 2.5rem;
+      text-align: right;
+      transition: all 0.4s ease;
+    }
+
+    .breakdown-count.flash {
+      color: #86efac;
+      transform: scale(1.08);
+    }
+
+    /* ── Reset ── */
+
+    .btn-export {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      background: #1e3a5f;
+      color: #93c5fd;
+      border: 1px solid #3b82f6;
+      border-radius: 6px;
+      padding: 0.55rem 1rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: background 0.2s;
+      white-space: nowrap;
+    }
+    .btn-export:hover { background: #1d4ed8; color: #fff; }
+
+    .danger-zone {
+      background: var(--surface);
+      border: 1px solid #450a0a;
+      border-radius: 10px;
+      padding: 1.25rem;
+      display: flex;
+      align-items: flex-start;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .danger-text { flex: 1; min-width: 200px; }
+    .danger-text h3 { font-size: 0.95rem; color: #fca5a5; margin-bottom: 0.3rem; }
+    .danger-text p  { font-size: 0.82rem; color: var(--muted); line-height: 1.4; }
+
+    .btn-reset {
+      background: var(--red);
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 0.6rem 1.2rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+      white-space: nowrap;
+    }
+    .btn-reset:hover { background: #b91c1c; }
+
+    /* ── Color Toolbar ── */
+    .color-toolbar {
+      display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap;
+      padding: 0.45rem 1rem; background: #0a1020;
+      border-bottom: 1px solid var(--border); flex-shrink: 0;
+    }
+    .color-toolbar-label {
+      font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--muted); margin-right: 0.25rem; user-select: none;
+    }
+    .color-btn {
+      width: 1.45rem; height: 1.45rem; border-radius: 50%;
+      border: 2px solid transparent; cursor: pointer; transition: transform 0.1s, border-color 0.1s;
+      flex-shrink: 0;
+    }
+    .color-btn:hover { transform: scale(1.2); border-color: rgba(255,255,255,0.5); }
+    .color-toolbar-sep { width: 1px; height: 1rem; background: var(--border); margin: 0 0.2rem; }
+    .clear-tag-btn {
+      font-size: 0.72rem; padding: 0.2rem 0.5rem; background: var(--border);
+      color: var(--muted); border: none; border-radius: 4px; cursor: pointer;
+    }
+    .clear-tag-btn:hover { background: #475569; color: var(--text); }
+
+    /* Confirm modal overlay */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 200;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.75rem 1.5rem;
+      max-width: 360px;
+      width: 90%;
+    }
+    .modal h2 { font-size: 1rem; margin-bottom: 0.5rem; color: #fca5a5; }
+    .modal p  { font-size: 0.88rem; color: var(--muted); margin-bottom: 1.2rem; line-height: 1.5; }
+
+    .modal-btns { display: flex; gap: 0.75rem; }
+    .modal-btns button { flex: 1; padding: 0.65rem; border-radius: 6px; font-size: 0.9rem; font-weight: 600; cursor: pointer; border: none; }
+    .btn-cancel { background: var(--border); color: var(--text); }
+    .btn-confirm { background: var(--red); color: #fff; }
+    .btn-cancel:hover  { background: #475569; }
+    .btn-confirm:hover { background: #b91c1c; }
+  </style>
+</head>
+<body>
+
+<header>
+  <span>📊</span>
+  <h1>Usage Logging</h1>
+  <a class="nav-link" href="/controller">🎙️ Controller</a>
+  <a class="nav-link" href="/logout">Sign out</a>
+</header>
+
+<div class="content">
+
+  <div class="live-row">
+    <span class="live-dot"></span>
+    <span>Live — updates automatically as readers connect</span>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-number" id="statUnique">–</div>
+      <div class="stat-label">Unique Readers</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number" id="statSessions">–</div>
+      <div class="stat-label">Total Sessions</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number" id="statUptime">–</div>
+      <div class="stat-label">Server Uptime</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-number" id="statEntries">–</div>
+      <div class="stat-label">Log Entries</div>
+    </div>
+  </div>
+
+  <!-- Export -->
+  <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap">
+    <a class="btn-export" id="exportBtn" href="/api/log/export" download>
+      ⬇ Download CSV Log
+    </a>
+    <span style="font-size:0.8rem;color:var(--muted)">
+      Exports all connection events since last reset as a .csv file
+    </span>
+  </div>
+
+  <!-- Reader Breakdown -->
+  <div class="breakdown-panel">
+    <h2>👥 Readers by Client Type</h2>
+    <div class="breakdown-row">
+      <div class="breakdown-label">
+        <span class="prefix-badge">WEBR-</span>
+        <span>Web Reader</span>
+      </div>
+      <div class="breakdown-count" id="bdWEBR">–</div>
+    </div>
+    <div class="breakdown-row">
+      <div class="breakdown-label">
+        <span class="prefix-badge">WEBB-</span>
+        <span>Web Backstage</span>
+      </div>
+      <div class="breakdown-count" id="bdWEBB">–</div>
+    </div>
+    <div class="breakdown-row">
+      <div class="breakdown-label">
+        <span class="prefix-badge">iOSR-</span>
+        <span>iOS Reader</span>
+      </div>
+      <div class="breakdown-count" id="bdiOSR">–</div>
+    </div>
+    <div class="breakdown-row">
+      <div class="breakdown-label">
+        <span class="prefix-badge">iOSB-</span>
+        <span>iOS Backstage</span>
+      </div>
+      <div class="breakdown-count" id="bdiOSB">–</div>
+    </div>
+    <div class="breakdown-row">
+      <div class="breakdown-label">
+        <span class="prefix-badge">ANDR-</span>
+        <span>Android Reader</span>
+      </div>
+      <div class="breakdown-count" id="bdANDR">–</div>
+    </div>
+    <div class="breakdown-row">
+      <div class="breakdown-label">
+        <span class="prefix-badge">ANDB-</span>
+        <span>Android Backstage</span>
+      </div>
+      <div class="breakdown-count" id="bdANDB">–</div>
+    </div>
+    <div class="breakdown-row">
+      <div class="breakdown-label">
+        <span class="prefix-badge" style="color:var(--muted)">other</span>
+        <span>Unknown / Legacy</span>
+      </div>
+      <div class="breakdown-count" id="bdOther">–</div>
+    </div>
+  </div>
+
+  <!-- Info Panel -->
+  <div class="info-panel">
+    <h2>About These Metrics</h2>
+    <div class="info-row">
+      <span>Unique Readers</span>
+      <span>Distinct device UUIDs seen</span>
+    </div>
+    <div class="info-row">
+      <span>Total Sessions</span>
+      <span>Every reader page load</span>
+    </div>
+    <div class="info-row">
+      <span>Privacy</span>
+      <span>No personal data stored</span>
+    </div>
+    <div class="info-row">
+      <span>Persistence</span>
+      <span>Resets on server restart</span>
+    </div>
+  </div>
+
+  <!-- Danger Zone -->
+  <div class="danger-zone">
+    <div class="danger-text">
+      <h3>Reset Counters</h3>
+      <p>This will clear the unique reader list and session count immediately. This cannot be undone.</p>
+    </div>
+    <button class="btn-reset" onclick="openConfirm()">Reset Counters</button>
+  </div>
+
+
+<!-- Confirm Modal -->
+<div class="modal-overlay" id="confirmModal">
+  <div class="modal">
+    <h2>⚠️ Confirm Reset</h2>
+    <p>This will clear all unique reader IDs and reset the session counter to zero. Are you sure?</p>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeConfirm()">Cancel</button>
+      <button class="btn-confirm" onclick="doReset()">Yes, Reset</button>
+    </div>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  // ── Socket ──────────────────────────────────────────────────────────────────
+  const socket = io({ query: { type: 'logging' } });
+
+  socket.on('log-updated', (data) => {
+    animateStat('statUnique',   data.uniqueReaders);
+    animateStat('statSessions', data.totalSessions);
+    animateStat('statEntries',  data.logEntries !== undefined ? data.logEntries : 0);
+    if (data.breakdown) updateBreakdown(data.breakdown);
+  });
+
+  // ── Fetch initial data via API ───────────────────────────────────────────────
+  // Breakdown prefix → element ID map
+  const BREAKDOWN_IDS = {
+    'WEBR-': 'bdWEBR', 'WEBB-': 'bdWEBB',
+    'iOSR-': 'bdiOSR', 'iOSB-': 'bdiOSB',
+    'ANDR-': 'bdANDR', 'ANDB-': 'bdANDB',
+    'other':  'bdOther'
+  };
+
+  function updateBreakdown(breakdown, animate = true) {
+    for (const [key, elId] of Object.entries(BREAKDOWN_IDS)) {
+      const val = breakdown[key] ?? 0;
+      const el  = document.getElementById(elId);
+      if (!el) continue;
+      if (animate) {
+        const current = parseInt(el.textContent) || 0;
+        if (val !== current) {
+          el.textContent = val;
+          el.classList.remove('flash');
+          void el.offsetWidth;
+          el.classList.add('flash');
+          setTimeout(() => el.classList.remove('flash'), 600);
+        }
+      } else {
+        el.textContent = val;
+      }
+    }
+  }
+
+  async function fetchLog() {
+    try {
+      const res  = await fetch('/api/log');
+      if (!res.ok) return;
+      const data = await res.json();
+      setStatRaw('statUnique',   data.uniqueReaders);
+      setStatRaw('statSessions', data.totalSessions);
+      setStatRaw('statEntries',  data.logEntries !== undefined ? data.logEntries : '–');
+      setUptimeDisplay(data.serverUptime);
+      if (data.breakdown) updateBreakdown(data.breakdown, false);
+    } catch(e) {
+      console.error('Could not fetch log data:', e);
+    }
+  }
+
+  function setStatRaw(id, val) {
+    document.getElementById(id).textContent = val;
+  }
+
+  function animateStat(id, val) {
+    const el = document.getElementById(id);
+    const current = parseInt(el.textContent) || 0;
+    if (val !== current) {
+      el.textContent = val;
+      el.classList.remove('flash');
+      void el.offsetWidth; // reflow
+      el.classList.add('flash');
+      setTimeout(() => el.classList.remove('flash'), 600);
+    }
+  }
+
+  // ── Uptime display ───────────────────────────────────────────────────────────
+  let uptimeSeconds = 0;
+
+  function setUptimeDisplay(seconds) {
+    uptimeSeconds = seconds;
+    renderUptime();
+  }
+
+  function renderUptime() {
+    const h = Math.floor(uptimeSeconds / 3600);
+    const m = Math.floor((uptimeSeconds % 3600) / 60);
+    const s = uptimeSeconds % 60;
+    let display;
+    if (h > 0)      display = `${h}h ${m}m`;
+    else if (m > 0) display = `${m}m ${s}s`;
+    else            display = `${s}s`;
+    setStatRaw('statUptime', display);
+  }
+
+  // Tick uptime every second
+  setInterval(() => {
+    uptimeSeconds++;
+    renderUptime();
+  }, 1000);
+
+  // ── Reset ────────────────────────────────────────────────────────────────────
+  function openConfirm()  { document.getElementById('confirmModal').classList.add('open'); }
+  function closeConfirm() { document.getElementById('confirmModal').classList.remove('open'); }
+
+  async function doReset() {
+    closeConfirm();
+    try {
+      const res = await fetch('/api/log/reset', { method: 'POST' });
+      if (res.ok) {
+        setStatRaw('statUnique',   0);
+        setStatRaw('statSessions', 0);
+        setStatRaw('statEntries',  0);
+        updateBreakdown({
+          'WEBR-':0,'WEBB-':0,'iOSR-':0,'iOSB-':0,'ANDR-':0,'ANDB-':0,'other':0
+        }, false);
+      }
+    } catch(e) {
+      alert('Reset failed. Please try again.');
+    }
+  }
+
+  // ── Boot ─────────────────────────────────────────────────────────────────────
+  fetchLog();
+</script>
+</body>
+</html>

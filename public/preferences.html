@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <link rel="icon" href="./favicon.png" sizes="32x32">
+  <link rel="icon" href="./favicon.png" sizes="192x192">
+  <link rel="apple-touch-icon" href="./favicon.png">
+  <title>WordLight — Preferences</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #0f172a;
+      --surface: #1e293b;
+      --border:  #334155;
+      --text:    #e2e8f0;
+      --muted:   #94a3b8;
+      --accent:  #6366f1;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, sans-serif;
+    }
+
+    body {
+      padding: env(safe-area-inset-top) env(safe-area-inset-right)
+               env(safe-area-inset-bottom) env(safe-area-inset-left);
+    }
+
+    /* ── Header ── */
+    header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.75rem 1rem;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .back-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.4rem 0.75rem;
+      font-size: 0.9rem;
+      color: var(--text);
+      cursor: pointer;
+      text-decoration: none;
+      transition: background 0.15s;
+    }
+    .back-btn:hover { background: var(--border); }
+
+    header h1 {
+      font-size: 1rem;
+      font-weight: 600;
+      flex: 1;
+    }
+
+    /* ── Content ── */
+    .content {
+      max-width: 480px;
+      margin: 0 auto;
+      padding: 1.25rem 1rem 2rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    /* ── Preview ── */
+    .preview-box {
+      border-radius: 10px;
+      padding: 1.5rem 1.25rem;
+      text-align: center;
+      transition: background 0.2s;
+    }
+
+    .preview-prev {
+      font-size: 0.9rem;
+      opacity: 0.5;
+      margin-bottom: 0.5rem;
+    }
+
+    .preview-current {
+      font-size: 1.8rem;
+      font-weight: 500;
+      line-height: 1.3;
+    }
+
+    /* ── Section ── */
+    .section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .section-title {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      padding: 0.6rem 1rem;
+      background: rgba(0,0,0,0.2);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 0.85rem 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .row:last-child { border-bottom: none; }
+
+    .row-label {
+      flex: 1;
+      font-size: 0.9rem;
+    }
+
+    .row-control {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-shrink: 0;
+    }
+
+    /* Color swatch + input */
+    .color-swatch {
+      width: 2rem; height: 2rem;
+      border-radius: 6px;
+      border: 2px solid var(--border);
+      cursor: pointer;
+      overflow: hidden;
+      position: relative;
+    }
+    .color-swatch input[type="color"] {
+      position: absolute;
+      inset: -4px;
+      opacity: 0;
+      cursor: pointer;
+      width: calc(100% + 8px);
+      height: calc(100% + 8px);
+    }
+
+    .color-hex {
+      font-size: 0.8rem;
+      color: var(--muted);
+      min-width: 4em;
+      font-family: monospace;
+    }
+
+    /* Slider */
+    .slider-row {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.5rem;
+    }
+
+    .slider-header {
+      display: flex;
+      width: 100%;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+      height: 4px;
+      cursor: pointer;
+    }
+
+    .size-value {
+      font-size: 0.85rem;
+      color: var(--muted);
+      min-width: 3em;
+      text-align: right;
+    }
+
+    /* Select */
+    select {
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.4rem 0.6rem;
+      font-size: 0.85rem;
+      cursor: pointer;
+      outline: none;
+    }
+    select:focus { border-color: var(--accent); }
+
+    /* ── Buttons ── */
+    .btn-row {
+      display: flex;
+      gap: 0.75rem;
+    }
+
+    .btn {
+      flex: 1;
+      padding: 0.8rem;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .btn:hover { opacity: 0.85; }
+
+    .btn-save {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .btn-reset {
+      background: var(--border);
+      color: var(--text);
+    }
+
+    .saved-toast {
+      text-align: center;
+      font-size: 0.85rem;
+      color: #4ade80;
+      height: 1.2em;
+      transition: opacity 0.5s;
+    }
+    
+    /* ── Color Toolbar ── */
+
+    .color-toolbar {
+      align-items: center;
+      padding: 0.45rem 1rem;
+     
+    }
+
+    .color-toolbar-label {
+      font-size: 0.7rem; text-transform: uppercase; align-items: center; letter-spacing: 0.06em;
+      color: var(--muted); user-select: none; padding: 0.45rem 1rem;
+    }
+    .color-btn {
+      width: 1.45rem; height: 1.45rem; border-radius: 50%;
+      border: 2px solid transparent; cursor: pointer; transition: transform 0.1s, border-color 0.1s;
+      flex-shrink: 0; align-items: center;
+    }
+    .color-btn:hover { transform: scale(1.2); align-items: center;border-color: rgba(255,255,255,0.5); }
+
+  </style>
+</head>
+<body>
+
+<header>
+  <a class="back-btn" id="backBtn" href="/reader">← Back</a>
+  <script>
+    // Honour ?from= so pages other than reader.html can link here
+    // and still get a working back button.
+    const _from = new URLSearchParams(location.search).get('from');
+    const _allowed = { backstage: '/backstage', reader: '/reader' };
+    if (_from && _allowed[_from]) {
+      document.getElementById('backBtn').href = _allowed[_from];
+    }
+  </script>
+  <h1>Reader Preferences</h1>
+</header>
+
+<div class="content">
+
+  <!-- Live Preview -->
+  <div class="preview-box" id="previewBox" style="background:#000">
+    <div class="preview-prev" id="previewPrev" style="color:rgba(255,255,255,0.45)">
+      Previous caption line shown here
+    </div>
+    <div class="preview-current" id="previewCurrent" style="color:#fff; font-size:2rem">
+      Current caption line
+    </div>
+    <div class="color-toolbar" id="colorToolbar">
+      <div class="color-toolbar-label">Please note that the following colors might be used for character names:</div>
+      <button class="color-btn" style="background:#ef4444" title="[red]"></button>
+      <button class="color-btn" style="background:#f97316" title="[orange]"></button>
+      <button class="color-btn" style="background:#fbbf24" title="[yellow]"></button>
+      <button class="color-btn" style="background:#4ade80" title="[green]"></button>
+      <button class="color-btn" style="background:#22d3ee" title="[cyan]"></button>
+      <button class="color-btn" style="background:#60a5fa" title="[blue]"></button>
+      <button class="color-btn" style="background:#a78bfa" title="[purple]"></button>
+      <button class="color-btn" style="background:#f472b6" title="[pink]"></button>
+      <button class="color-btn" style="background:#9ca3af" title="[gray]"></button>
+      <button class="color-btn" style="background:#ffffff" title="[white]"></button>
+    </div>
+  </div>
+
+  <!-- Text Size -->
+  <div class="section">
+    <div class="section-title">Text Size</div>
+    <div class="row slider-row">
+      <div class="slider-header">
+        <span class="row-label">Caption font size</span>
+        <span class="size-value" id="sizeLabel">2.0 rem</span>
+      </div>
+      <input type="range" id="fontSizeSlider" min="1" max="5" step="0.1" value="2" />
+    </div>
+  </div>
+
+  <!-- Colors -->
+  <div class="section">
+    <div class="section-title">Colors</div>
+
+    <div class="row">
+      <span class="row-label">Background</span>
+      <div class="row-control">
+        <div class="color-swatch" id="swatchBg" style="background:#000000">
+          <input type="color" id="bgColor" value="#000000" />
+        </div>
+        <span class="color-hex" id="hexBg">#000000</span>
+      </div>
+    </div>
+
+    <div class="row">
+      <span class="row-label">Current line</span>
+      <div class="row-control">
+        <div class="color-swatch" id="swatchText" style="background:#ffffff">
+          <input type="color" id="textColor" value="#ffffff" />
+        </div>
+        <span class="color-hex" id="hexText">#ffffff</span>
+      </div>
+    </div>
+
+    <div class="row">
+      <span class="row-label">Previous lines</span>
+      <div class="row-control">
+        <div class="color-swatch" id="swatchPrev" style="background:#777777">
+          <input type="color" id="prevColor" value="#777777" />
+        </div>
+        <span class="color-hex" id="hexPrev">#777777</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Font -->
+  <div class="section">
+    <div class="section-title">Font</div>
+    <div class="row">
+      <span class="row-label">Font family</span>
+      <div class="row-control">
+        <select id="fontFamily">
+          <option value="system-ui, -apple-system, sans-serif">System Default</option>
+          <option value="'OpenDyslexic', sans-serif">OpenDyslexic (dyslexia-friendly)</option>
+          <option value="'Comic Sans MS', 'Comic Sans', cursive">Comic Sans</option>
+          <option value="Arial, sans-serif">Arial</option>
+          <option value="'Helvetica Neue', Helvetica, sans-serif">Helvetica</option>
+          <option value="Georgia, serif">Georgia</option>
+          <option value="'Courier New', monospace">Courier</option>
+          <option value="'Times New Roman', serif">Times New Roman</option>
+          <option value="Verdana, sans-serif">Verdana</option>
+          <option value="Tahoma, sans-serif">Tahoma</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Preset Themes -->
+  <div class="section">
+    <div class="section-title">Quick Themes</div>
+    <div class="row" style="flex-wrap:wrap; gap:0.5rem; padding:0.85rem 1rem">
+      <button class="btn" style="flex:0 1 auto; padding:0.45rem 0.9rem; font-size:0.8rem; font-weight:500; border-radius:6px; background:#000; color:#fff; border:1px solid #333" onclick="applyTheme('classic')">⬛ Classic</button>
+      <button class="btn" style="flex:0 1 auto; padding:0.45rem 0.9rem; font-size:0.8rem; font-weight:500; border-radius:6px; background:#fff; color:#000; border:1px solid #ccc" onclick="applyTheme('light')">⬜ Light</button>
+      <button class="btn" style="flex:0 1 auto; padding:0.45rem 0.9rem; font-size:0.8rem; font-weight:500; border-radius:6px; background:#003300; color:#00ff00; border:1px solid #005500" onclick="applyTheme('green')">🖥 Terminal</button>
+      <button class="btn" style="flex:0 1 auto; padding:0.45rem 0.9rem; font-size:0.8rem; font-weight:500; border-radius:6px; background:#ffffcc; color:#333300; border:1px solid #cccc00" onclick="applyTheme('yellow')">🟡 High Contrast</button>
+      <button class="btn" style="flex:0 1 auto; padding:0.45rem 0.9rem; font-size:0.8rem; font-weight:500; border-radius:6px; background:#000033; color:#88aaff; border:1px solid #003366" onclick="applyTheme('blue')">🔵 Night Blue</button>
+      <button class="btn" style="flex:0 1 auto; padding:0.45rem 0.9rem; font-size:0.8rem; font-weight:500; border-radius:6px; background:#000000; color:#ff0033; border:1px solid #cc0000" onclick="applyTheme('red')">🔴 Night Red</button>
+    </div>
+  </div>
+
+  <!-- Action Buttons -->
+  <div class="btn-row">
+    <button class="btn btn-reset" onclick="resetDefaults()">Reset Defaults</button>
+    <button class="btn btn-save" onclick="savePrefs()">Save Preferences</button>
+  </div>
+
+  <div class="saved-toast" id="savedToast" style="opacity:0"></div>
+
+</div><!-- /content -->
+
+<script>
+  // ── Defaults ────────────────────────────────────────────────────────────────
+  const DEFAULTS = {
+    bgColor:    '#000000',
+    textColor:  '#ffffff',
+    prevColor:  '#777777',
+    fontSize:   2.0,
+    fontFamily: 'system-ui, -apple-system, sans-serif'
+  };
+
+  const THEMES = {
+    classic:  { bgColor: '#000000', textColor: '#ffffff', prevColor: '#777777' },
+    light:    { bgColor: '#ffffff', textColor: '#000000', prevColor: '#888888' },
+    green:    { bgColor: '#003300', textColor: '#00ff00', prevColor: '#006600' },
+    yellow:   { bgColor: '#ffffcc', textColor: '#333300', prevColor: '#999966' },
+    blue:     { bgColor: '#000033', textColor: '#88aaff', prevColor: '#334466' },
+    red:      { bgColor: '#000000', textColor: '#ff0033', prevColor: '#cc0000' }
+  };
+
+  // ── Load saved prefs ────────────────────────────────────────────────────────
+  let prefs = { ...DEFAULTS };
+  try {
+    const saved = JSON.parse(localStorage.getItem('captionPrefs') || '{}');
+    prefs = { ...DEFAULTS, ...saved };
+  } catch(e) {}
+
+  // ── DOM refs ────────────────────────────────────────────────────────────────
+  const bgColorInput   = document.getElementById('bgColor');
+  const textColorInput = document.getElementById('textColor');
+  const prevColorInput = document.getElementById('prevColor');
+  const fontSizeSlider = document.getElementById('fontSizeSlider');
+  const fontFamilySel  = document.getElementById('fontFamily');
+
+  // ── Initialise controls ─────────────────────────────────────────────────────
+  function initControls() {
+    bgColorInput.value   = prefs.bgColor;
+    textColorInput.value = prefs.textColor;
+    prevColorInput.value = prefs.prevColor;
+    fontSizeSlider.value = prefs.fontSize;
+    fontFamilySel.value  = prefs.fontFamily;
+    updateAllSwatches();
+    updatePreview();
+  }
+
+  // ── Swatch sync ─────────────────────────────────────────────────────────────
+  function updateSwatch(inputId, swatchId, hexId) {
+    const val = document.getElementById(inputId).value;
+    document.getElementById(swatchId).style.background = val;
+    document.getElementById(hexId).textContent = val;
+  }
+
+  function updateAllSwatches() {
+    updateSwatch('bgColor',   'swatchBg',   'hexBg');
+    updateSwatch('textColor', 'swatchText', 'hexText');
+    updateSwatch('prevColor', 'swatchPrev', 'hexPrev');
+  }
+
+  // ── Event listeners ─────────────────────────────────────────────────────────
+  bgColorInput.addEventListener('input', () => {
+    updateSwatch('bgColor', 'swatchBg', 'hexBg');
+    updatePreview();
+  });
+  textColorInput.addEventListener('input', () => {
+    updateSwatch('textColor', 'swatchText', 'hexText');
+    updatePreview();
+  });
+  prevColorInput.addEventListener('input', () => {
+    updateSwatch('prevColor', 'swatchPrev', 'hexPrev');
+    updatePreview();
+  });
+  fontSizeSlider.addEventListener('input', () => {
+    document.getElementById('sizeLabel').textContent = parseFloat(fontSizeSlider.value).toFixed(1) + ' rem';
+    updatePreview();
+  });
+  fontFamilySel.addEventListener('change', updatePreview);
+
+  // ── Live Preview ─────────────────────────────────────────────────────────────
+  function updatePreview() {
+    const box     = document.getElementById('previewBox');
+    const current = document.getElementById('previewCurrent');
+    const prev    = document.getElementById('previewPrev');
+
+    box.style.background         = bgColorInput.value;
+    current.style.color          = textColorInput.value;
+    current.style.fontSize       = fontSizeSlider.value + 'rem';
+    current.style.fontFamily     = fontFamilySel.value;
+    prev.style.color             = prevColorInput.value;
+    prev.style.fontFamily        = fontFamilySel.value;
+    prev.style.fontSize          = (parseFloat(fontSizeSlider.value) * 0.6) + 'rem';
+
+    document.getElementById('sizeLabel').textContent =
+      parseFloat(fontSizeSlider.value).toFixed(1) + ' rem';
+  }
+
+  // ── Themes ──────────────────────────────────────────────────────────────────
+  function applyTheme(name) {
+    const t = THEMES[name];
+    if (!t) return;
+    bgColorInput.value   = t.bgColor;
+    textColorInput.value = t.textColor;
+    prevColorInput.value = t.prevColor;
+    updateAllSwatches();
+    updatePreview();
+  }
+
+  // ── Save ────────────────────────────────────────────────────────────────────
+  function savePrefs() {
+    prefs = {
+      bgColor:    bgColorInput.value,
+      textColor:  textColorInput.value,
+      prevColor:  prevColorInput.value,
+      fontSize:   parseFloat(fontSizeSlider.value),
+      fontFamily: fontFamilySel.value
+    };
+    localStorage.setItem('captionPrefs', JSON.stringify(prefs));
+    showToast('✓ Saved! Go back to see your changes.');
+  }
+
+  function resetDefaults() {
+    prefs = { ...DEFAULTS };
+    bgColorInput.value   = prefs.bgColor;
+    textColorInput.value = prefs.textColor;
+    prevColorInput.value = prefs.prevColor;
+    fontSizeSlider.value = prefs.fontSize;
+    fontFamilySel.value  = prefs.fontFamily;
+    updateAllSwatches();
+    updatePreview();
+  }
+
+  function showToast(msg) {
+    const toast = document.getElementById('savedToast');
+    toast.textContent = msg;
+    toast.style.opacity = '1';
+    setTimeout(() => { toast.style.opacity = '0'; }, 2500);
+  }
+
+  // ── Boot ────────────────────────────────────────────────────────────────────
+  initControls();
+</script>
+</body>
+</html>

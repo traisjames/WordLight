@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <link rel="icon" href="./favicon.png" sizes="32x32">
+  <link rel="icon" href="./favicon.png" sizes="192x192">
+  <link rel="apple-touch-icon" href="./favicon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>WordLight — Backstage</title>
+  <link rel="stylesheet" href="./styles.css">
+  <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        /* Defaults — overridden from preferences stored in localStorage */
+        :root {
+          --bg-r:         #000000;
+          --text-current: #ffffff;
+          --text-prev:    rgba(255,255,255,0.45);
+          --font-size:    2rem;
+          --font-family:  system-ui, -apple-system, Arial, sans-serif;
+        }
+        
+        /* ── Preloader (welcome screen shown briefly on first load) ──────────
+           Previously had no CSS at all anywhere in this file or the shared
+           stylesheet — the HTML markup and JS existed, but nothing actually
+           styled, sized, positioned, or animated it. Ported from reader.html,
+           including position:fixed so it's a true full-screen overlay rather
+           than a normal flex-flow sibling that would compete for space with
+           the caption display once live content starts rendering. */
+        @keyframes fadeOut {
+          0% {opacity:1;}
+          25% {opacity:1;}
+          100% {opacity:0; display: none;}
+        }
+        @-moz-keyframes fadeOut {
+          0% {opacity:1;}
+          25% {opacity:1;}
+          100% {opacity:0; display: none;}
+        }
+        @-webkit-keyframes fadeOut {
+          0% {opacity:1;}
+          25% {opacity:1;}
+          100% {opacity:0; display: none;}
+        }
+        @-o-keyframes fadeOut {
+          0% {opacity:1;}
+          25% {opacity:1;}
+          100% {opacity:0; display: none;}
+        }
+        @-ms-keyframes fadeOut {
+          0% {opacity:1;}
+          25% {opacity:1;}
+          100% {opacity:0; display: none;}
+        }
+
+        .fade-out-preload {
+          position: fixed;
+          inset: 0;
+          z-index: 250;
+          background: var(--bg-r, #000);
+
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          align-items: center;
+
+          animation: fadeOut ease 5s forwards;
+          -webkit-animation: fadeOut ease 5s forwards;
+          -moz-animation: fadeOut ease 5s forwards;
+          -o-animation: fadeOut  ease 5s forwards;
+          -ms-animation: fadeOut ease 5s forwards;
+        }
+
+        .welcome {
+          color: rgba(255,255,255,0.3);
+          font-size: 2rem;
+          font-family: system-ui, sans-serif;
+          text-align: center;
+          line-height: 1.6;
+        }
+
+        html, body {
+          height: 100%;
+          background: var(--bg-r);
+        }
+        
+        body {
+          display: flex;
+          flex-direction: column;
+          /* IMPORTANT: height, not min-height — see reader.html for the
+             full explanation. min-height lets the page grow taller than
+             one screen and become scrollable whenever a long caption needs
+             more room than fits, which defeats a live display no one is
+             meant to interact with. */
+          height: 100%;
+          height: 100dvh;
+          overflow: hidden;
+          padding: env(safe-area-inset-top) env(safe-area-inset-right)
+                   env(safe-area-inset-bottom) env(safe-area-inset-left);
+        }
+        
+
+        /* ── Caption display ── */
+        .caption-area {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          padding: 1rem 1.2rem 2rem;
+          gap: 0.6rem;
+          /* Overrides flexbox's default min-height:auto, which would
+             otherwise let content force this box taller than its flex:1
+             allocation despite body's fixed height. */
+          min-height: 0;
+          overflow: hidden;
+        }
+
+        /* ── Speaker note (backstage only) ── */
+        .current-note {
+          font-family: var(--font-family, system-ui, sans-serif);
+          font-size: calc(var(--font-size, 2rem) * 0.8);
+          color: #86efac;
+          background: #1a2a1a;
+          border: 1px solid #2d4a2d;
+          border-radius: 6px;
+          padding: 0.3rem 0.65rem;
+          font-style: italic;
+          line-height: 1.4;
+          word-break: break-word;
+          align-self: flex-start;
+        }
+        
+        .divider {
+          height: 3px;
+          background: rgba(255,255,255,0.9);
+          margin: 0.25rem 0;
+        }
+        
+
+  </style>
+</head>
+<body>
+<!-- Preloader -->
+  <!-- Skip-check runs synchronously before the div is painted so the
+       animation never starts when the user has visited within 12 hours. -->
+  <script>
+    (function () {
+      var SESSION_MS = 12 * 60 * 60 * 1000; // 12 hours — matches server session
+      var last = parseInt(localStorage.getItem('preloadShown') || '0', 10);
+      if (Date.now() - last < SESSION_MS) {
+        // Already shown recently — inject a style that hides the preloader
+        // immediately, before the element exists in the DOM.
+        document.write('<style>#preloader{display:none!important}</style>');
+      } else {
+        // First visit (or session expired) — record the time so return visits skip it.
+        localStorage.setItem('preloadShown', Date.now().toString());
+      }
+    })();
+  </script>
+  <div id="preloader" class="fade-out-preload">
+    <div id="preloadimg">
+        <img id="iconlargeimg" alt="Welcome to the Close Caption Viewer" src="./iconlarge.png">
+    </div>
+    <div id="preloadtext" class="welcome">
+        Welcome to the 
+        <div id="theatername"></div>
+        Caption Viewer
+    </div>
+  </div>
+  <script>
+    // Safety net — see reader.html for full explanation. Guarantees the
+    // preloader is removed from flex layout even if the browser doesn't
+    // honour the fadeOut keyframe's discrete display:none.
+    document.getElementById('preloader').addEventListener('animationend', function () {
+      this.style.display = 'none';
+    });
+  </script>
+
+<!-- Top Bar -->
+  <a class="settings-btn" href="/preferences?from=backstage" title="Reader Preferences">⚙️</a>
+  <div class="wakelock-badge" id="wakelockBadge" title="Screen wake lock status">
+    <span id="wakelockIcon">☀️</span> <span id="wakelockLabel">Screen on</span>
+  </div>
+  <div class="conn-badge" id="connBadge">
+    <span class="conn-dot" id="connDot"></span> <span id="connLabel">Connecting…</span>
+  </div>
+
+<!-- Intermission overlay -->
+  <div class="intermission-overlay" id="intermissionOverlay">
+    <div class="intermission-icon">
+      ☕
+    </div>
+    <div class="intermission-title">
+      Please Stand By
+    </div>
+    <div class="intermission-dots"><span></span><span></span><span></span></div>
+  </div>
+
+<!-- Waiting state shown before any content -->
+  <div class="waiting" id="waitingMsg">
+    Waiting for the presenter to start…
+  </div>
+
+<!-- Caption display -->
+  <div class="caption-area" id="captionArea" style="display:none">
+    <div class="prev-line-2" id="prevLine2"></div>
+    <div class="prev-line" id="prevLine"></div>
+    <div class="divider" id="dividerp" style="display:none"></div>
+    <div class="current-line" id="currentLine"></div>
+    <div class="current-note" id="currentNote" style="display:none"></div>
+    <div class="divider" id="dividern" style="display:none"></div>
+    <div class="next-line" id="nextLine"></div>
+    <div class="next-line-2" id="nextLine2"></div>
+    <div class="next-line-3" id="nextLine3"></div>
+    <div class="next-line-4" id="nextLine4"></div>
+  </div>
+
+<!-- Live type overlay — shown when controller is free-typing -->
+  <div class="live-overlay" id="liveOverlay">
+    <div class="live-badge">
+      Live
+    </div>
+    <div class="live-text" id="liveText"></div>
+  </div>
+   <script src="./global.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+        
+// ── Reader ID ────────────────────────────────────────────────────────────────
+// Stored in localStorage — identifies this device for usage tracking.
+// Contains no personal data.
+
+const readerId = getOrCreateReaderId('WEBB');
+
+// ── Apply Saved Preferences ──────────────────────────────────────────────────────────────
+function applyPreferences() {
+  const prefs = JSON.parse(localStorage.getItem('captionPrefs') || '{}');
+  const root  = document.documentElement;
+  
+  if (prefs.bgColor)    { root.style.setProperty('--bg-r',           prefs.bgColor); document.body.style.backgroundColor = prefs.bgColor; }
+  if (prefs.textColor)  root.style.setProperty('--text-current', prefs.textColor);
+  if (prefs.prevColor)  root.style.setProperty('--text-prev',    prefs.prevColor);
+  if (prefs.prevColor)  root.style.setProperty('--text-next',    prefs.prevColor);
+  if (prefs.fontSize)   root.style.setProperty('--font-size',    prefs.fontSize + 'rem');
+  if (prefs.fontFamily) root.style.setProperty('--font-family',  prefs.fontFamily);
+  
+  // Apply background color to body too for full coverage
+  if (prefs.bgColor) document.body.style.backgroundColor = prefs.bgColor;
+}
+applyPreferences();
+
+// ── Wake Lock ────────────────────────────────────────────────────────────────
+let wakeLock     = null;
+const wlBadge    = document.getElementById('wakelockBadge');
+const wlIcon     = document.getElementById('wakelockIcon');
+const wlLabel    = document.getElementById('wakelockLabel');
+
+async function requestWakeLock() {
+  if (!('wakeLock' in navigator)) {
+    // Browser doesn't support Wake Lock — show a muted badge
+    wlIcon.textContent  = '🌙';
+    wlLabel.textContent = 'Wake lock unavailable';
+    wlBadge.classList.add('visible', 'unsupported');
+    return;
+  }
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    wlIcon.textContent  = '☀️';
+    wlLabel.textContent = 'Screen on';
+    wlBadge.classList.add('visible');
+    wlBadge.classList.remove('unsupported');
+
+    wakeLock.addEventListener('release', () => {
+      wlIcon.textContent  = '🌙';
+      wlLabel.textContent = 'Screen lock active';
+      wakeLock = null;
+    });
+  } catch (err) {
+    // Permission denied or unavailable (e.g. not on HTTPS) — fail silently
+    console.warn('Wake lock request failed:', err.message);
+  }
+}
+
+// Re-acquire wake lock when tab becomes visible again (OS releases it on hide)
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') requestWakeLock();
+});
+
+requestWakeLock();
+
+// ── Socket Connection ───────────────────────────────────────────────────────
+const socket = io({ query: { type: 'reader', readerId } });
+
+socket.on('connect', () => {
+  setConnected(true);
+});
+
+socket.on('disconnect', () => {
+  setConnected(false);
+});
+
+socket.on('state-update', (data) => {
+  renderCaptions(data);
+});
+
+function setConnected(connected) {
+  const dot   = document.getElementById('connDot');
+  const label = document.getElementById('connLabel');
+  const badge = document.getElementById('connBadge');
+  dot.className  = 'conn-dot' + (connected ? ' connected' : '');
+  badge.className = 'conn-badge' + (connected ? ' connected' : '');
+  label.textContent = connected ? 'Live' : 'Reconnecting…';
+}
+
+// ── Caption Rendering ────────────────────────────────────────────────────────
+let lastIndex = -2;
+
+// -- Let must match return of readerPayload in server.js
+function renderCaptions(state) {
+  const { current, prev, prev2, next, next2, next3, next4, currentIndex, liveText, intermission } = state;
+
+  const waiting        = document.getElementById('waitingMsg');
+  const captionArea    = document.getElementById('captionArea');
+  const liveOverlay    = document.getElementById('liveOverlay');
+  const liveTextEl     = document.getElementById('liveText');
+  const currentEl      = document.getElementById('currentLine');
+  const prevEl         = document.getElementById('prevLine');
+  const prev2El        = document.getElementById('prevLine2');
+  const nextEl         = document.getElementById('nextLine');
+  const next2El        = document.getElementById('nextLine2');
+  const next3El        = document.getElementById('nextLine3');
+  const next4El        = document.getElementById('nextLine4');
+  const dividerp     = document.getElementById('dividerp');
+  const dividern     = document.getElementById('dividern');
+  const intermissionEl = document.getElementById('intermissionOverlay');
+
+  // ── Intermission takes top priority ──────────────────────────────────────
+  if (intermission) {
+          intermissionEl.classList.add('visible');
+          waiting.style.display        = 'none';
+          captionArea.style.display    = 'none';
+          liveOverlay.style.display    = 'none';
+          return;
+        }
+        intermissionEl.classList.remove('visible');
+        
+  // ── Live text takes priority ──────────────────────────────────────────────
+  const hasLive = liveText && liveText.trim().length > 0;
+
+  if (hasLive) {
+    waiting.style.display      = 'none';
+    liveOverlay.style.display  = 'flex';
+    // Dim the script behind it
+    captionArea.style.display  = current ? 'flex' : 'none';
+    captionArea.classList.add('dimmed');
+    liveTextEl.innerHTML   = parseColorTags(liveText);
+  } else {
+    liveOverlay.style.display = 'none';
+    captionArea.classList.remove('dimmed');
+  }
+
+  // ── Script lines ─────────────────────────────────────────────────────────
+  if (!current && currentIndex < 0) {
+      if (!hasLive) { waiting.style.display = 'flex'; captionArea.style.display = 'none'; }
+      return;
+    }
+    if (!hasLive) { waiting.style.display = 'none'; captionArea.style.display = 'flex'; }
+
+    if (currentIndex !== lastIndex) {
+      currentEl.classList.remove('animate');
+      void currentEl.offsetWidth;
+      currentEl.classList.add('animate');
+      lastIndex = currentIndex;
+    }
+
+    // Show the note for the current line only. Surrounding lines have
+    // notes stripped — actors only need context for the line they are on.
+    const noteEl   = document.getElementById('currentNote');
+    const noteText = extractNote(current);
+    if (noteText) {
+      noteEl.textContent   = '📝 ' + noteText;
+      noteEl.style.display = 'block';
+    } else {
+      noteEl.style.display = 'none';
+    }
+
+    currentEl.innerHTML   = parseColorTags(stripNote(current));
+          prevEl.innerHTML      = parseColorTags(stripNote(prev   || ''));
+          prev2El.innerHTML     = parseColorTags(stripNote(prev2  || ''));
+          nextEl.innerHTML      = parseColorTags(stripNote(next   || ''));
+          next2El.innerHTML     = parseColorTags(stripNote(next2  || ''));
+          next3El.innerHTML     = parseColorTags(stripNote(next3  || ''));
+          next4El.innerHTML     = parseColorTags(stripNote(next4  || ''));
+
+          // Record what the "ideal" full state wants to show, based purely
+          // on whether there's content — fitCaptionToScreen() below uses
+          // these as its starting point each time, then trims further
+          // (oldest/furthest-away first) only if the full stack doesn't
+          // actually fit on screen.
+          prev2El.dataset.wants = prev2 ? '1' : '0';
+          prevEl.dataset.wants  = prev  ? '1' : '0';
+          nextEl.dataset.wants  = next  ? '1' : '0';
+          next2El.dataset.wants = next2 ? '1' : '0';
+          next3El.dataset.wants = next3 ? '1' : '0';
+          next4El.dataset.wants = next4 ? '1' : '0';
+
+          dividerp.style.display = prev ? 'block' : 'none';
+          dividern.style.display = next ? 'block' : 'none';
+          
+          prevEl.style.display  = prev ? 'block' : 'none';
+          prev2El.style.display = prev2 ? 'block' : 'none';
+          nextEl.style.display  = next ? 'block' : 'none';
+          next2El.style.display = next2 ? 'block' : 'none';
+          next3El.style.display = next3 ? 'block' : 'none';
+          next4El.style.display = next4 ? 'block' : 'none';
+
+          fitCaptionToScreen();
+  }
+
+  // ── Autofit: guarantee the CURRENT line is always fully visible ──────────
+  //
+  // Same reasoning as reader.html: flexbox's default overflow handling
+  // isn't reliable enough on its own — if the current line alone were ever
+  // too tall for the screen, it could lose its own top or bottom rather
+  // than sacrificing context lines. This measures actual rendered height
+  // and actively trims from the OUTSIDE IN — oldest past first, furthest
+  // future first — always leaving the current line (and its note) intact,
+  // shrinking it only as an absolute last resort.
+  //
+  // Priority order when space is tight:
+  //   1. prev2   (oldest context)
+  //   2. prev
+  //   3. next4   (furthest upcoming)
+  //   4. next3
+  //   5. next2
+  //   6. next    (closest upcoming)
+  //   7. shrink the current line's font size (60% floor) — never clip it
+  //
+  // Always starts fresh from the dataset "wants" markers set above, so a
+  // short caption immediately after a long one restores full context and
+  // full size — nothing carries over or compounds between renders.
+  function fitCaptionToScreen() {
+    const area      = document.getElementById('captionArea');
+    const prev2El   = document.getElementById('prevLine2');
+    const prevEl    = document.getElementById('prevLine');
+    const dividerp  = document.getElementById('dividerp');
+    const nextEl    = document.getElementById('nextLine');
+    const next2El   = document.getElementById('nextLine2');
+    const next3El   = document.getElementById('nextLine3');
+    const next4El   = document.getElementById('nextLine4');
+    const dividern  = document.getElementById('dividern');
+    const currentEl = document.getElementById('currentLine');
+
+    if (area.style.display === 'none') return;   // nothing on screen to fit
+
+    const wants = {
+      prev2: prev2El.dataset.wants === '1',
+      prev:  prevEl.dataset.wants  === '1',
+      next:  nextEl.dataset.wants  === '1',
+      next2: next2El.dataset.wants === '1',
+      next3: next3El.dataset.wants === '1',
+      next4: next4El.dataset.wants === '1',
+    };
+
+    // Reset to the full/ideal state before measuring — this is what makes
+    // it safe to call on every render without state leaking between calls.
+    prev2El.style.display  = wants.prev2 ? 'block' : 'none';
+    prevEl.style.display   = wants.prev  ? 'block' : 'none';
+    dividerp.style.display = wants.prev  ? 'block' : 'none';
+    nextEl.style.display   = wants.next  ? 'block' : 'none';
+    next2El.style.display  = wants.next2 ? 'block' : 'none';
+    next3El.style.display  = wants.next3 ? 'block' : 'none';
+    next4El.style.display  = wants.next4 ? 'block' : 'none';
+    dividern.style.display = wants.next  ? 'block' : 'none';
+    currentEl.style.fontSize = '';
+
+    const fits = () => area.scrollHeight <= area.clientHeight;
+
+    // Trim outside-in: furthest past, then furthest future, converging on
+    // the current line last of all.
+    if (wants.prev2 && !fits()) prev2El.style.display = 'none';
+    if (wants.prev  && !fits()) { prevEl.style.display = 'none'; dividerp.style.display = 'none'; }
+    if (wants.next4 && !fits()) next4El.style.display = 'none';
+    if (wants.next3 && !fits()) next3El.style.display = 'none';
+    if (wants.next2 && !fits()) next2El.style.display = 'none';
+    if (wants.next  && !fits()) { nextEl.style.display = 'none'; dividern.style.display = 'none'; }
+
+    // Extreme edge case — the current line (plus its note, if shown) alone
+    // still doesn't fit even with every other line hidden. Shrink rather
+    // than ever clip: a smaller-but-complete current line beats a
+    // full-size line that's missing part of its text.
+    const baseRem = parseFloat(
+      getComputedStyle(document.documentElement).getPropertyValue('--font-size')
+    ) || 2;
+    let scale = 1.0;
+    while (!fits() && scale > 0.6) {
+      scale -= 0.05;
+      currentEl.style.fontSize = (baseRem * scale) + 'rem';
+    }
+  }
+
+  // Viewport size can change after a caption is already on screen (window
+  // resized, device rotated) — re-run the fit check when that happens,
+  // debounced so a drag-resize doesn't trigger it dozens of times.
+  let resizeFitTimer = null;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeFitTimer);
+    resizeFitTimer = setTimeout(fitCaptionToScreen, 150);
+  });
+  </script>
+</body>
+</html>

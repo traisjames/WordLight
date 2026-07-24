@@ -1,0 +1,56 @@
+#======================= Global Settings =======================
+
+[global]
+
+   workgroup = WORKGROUP
+   netbios name = WordLight_Server
+;   interfaces = 127.0.0.0/8 eth0
+;   bind interfaces only = yes
+
+   log file = /var/log/samba/log.%m
+   max log size = 1000
+   logging = file
+   panic action = /usr/share/samba/panic-action %d
+
+   server role = standalone server
+   obey pam restrictions = yes
+   unix password sync = yes
+   passwd program = /usr/bin/passwd %u
+   passwd chat = *Enter\snew\s*\spassword:* %n\n *Retype\snew\s*\spassword:* %n\n *password\supdated\ssuccessfully* .
+   pam password change = yes
+
+# Unrecognized/failed logins fall back to guest instead of being rejected
+   map to guest = bad user
+
+   access based share enum = yes
+   usershare allow guests = yes
+
+#======================= Share Definitions =======================
+
+[CC Server]
+  comment = WordLight server files
+  read only = no
+  browsable = yes
+  valid users = wordlight
+  path = /home/wordlight/CC_Server
+
+[CC Storage]
+ comment = Store scripts here - everyone can read, wordlight/WordMaker can write
+ path = /home/wordlight/Scripts
+ browsable = yes
+ guest ok = yes
+ read only = yes
+ write list = wordlight, WordMaker
+ force group = scriptusers
+ create mask = 0664
+ directory mask = 0775
+
+[Wordlight Home]
+ comment = Full home directory (read-write for wordlight only)
+ path = /home/wordlight
+ browsable = yes
+ guest ok = no
+ valid users = wordlight
+ read only = no
+ create mask = 0770
+ directory mask = 0770

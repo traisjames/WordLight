@@ -1,0 +1,1239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" href="./favicon.png" sizes="32x32">
+  <link rel="icon" href="./favicon.png" sizes="192x192">
+  <link rel="apple-touch-icon" href="./favicon.png">
+  <title>WordLight — Editor</title>
+  <link rel="stylesheet" href="./styles.css">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --red:         #ef4444;
+    }
+
+    html, body { height: 100%; overflow: hidden; }
+
+    body {
+      display: flex; flex-direction: column;
+      background: var(--bg); color: var(--text);
+      font-family: system-ui, -apple-system, sans-serif;
+      font-size: 14px;
+    }
+
+    /* ── Header ──────────────────────────────────────────────────────────────── */
+    header {
+      display: flex; align-items: center; gap: 0.6rem;
+      padding: 0.6rem 1rem; background: var(--surface);
+      border-bottom: 1px solid var(--border); flex-shrink: 0; flex-wrap: wrap;
+    }
+
+    header h1 { font-size: 1rem; font-weight: 600; margin-right: 0.25rem; }
+
+    .file-name {
+      font-size: 0.8rem; color: var(--muted);
+      font-style: italic; flex: 1; min-width: 0;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .file-name.unsaved::after { content: ' •'; color: var(--amber); }
+
+    .btn {
+      display: inline-flex; align-items: center; gap: 0.35rem;
+      border: none; border-radius: 5px; padding: 0.4rem 0.8rem;
+      font-size: 0.82rem; font-weight: 500; cursor: pointer;
+      white-space: nowrap; transition: background 0.15s, opacity 0.15s;
+    }
+    .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    .btn-primary  { background: var(--accent); color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: var(--accent-h); }
+    .btn-secondary { background: var(--border); color: var(--text); }
+    .btn-secondary:hover:not(:disabled) { background: var(--border2); }
+    .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+    .btn-ghost:hover:not(:disabled) { background: var(--surface); color: var(--text); }
+    .btn-danger { background: #450a0a; color: #fca5a5; border: 1px solid #7f1d1d; }
+    .btn-danger:hover:not(:disabled) { background: #7f1d1d; }
+
+    #fileInput { display: none; }
+
+    /* ── Toolbar ─────────────────────────────────────────────────────────────── */
+    .toolbar {
+      display: flex; align-items: center; gap: 0.3rem; flex-wrap: wrap;
+      padding: 0.4rem 1rem; background: #0a1020;
+      border-bottom: 1px solid var(--border); flex-shrink: 0;
+    }
+
+    .tb-label {
+      font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--muted); margin-right: 0.15rem; user-select: none;
+    }
+
+    .color-btn {
+      width: 1.35rem; height: 1.35rem; border-radius: 50%; border: 2px solid transparent;
+      cursor: pointer; flex-shrink: 0; transition: transform 0.1s, border-color 0.1s;
+    }
+    .color-btn:hover { transform: scale(1.2); border-color: rgba(255,255,255,0.5); }
+
+    .tb-sep { width: 1px; height: 1.2rem; background: var(--border); margin: 0 0.3rem; flex-shrink: 0; }
+
+    .insert-btn {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 4px;
+      color: var(--text); font-size: 0.82rem; padding: 0.2rem 0.55rem;
+      cursor: pointer; white-space: nowrap; transition: background 0.15s;
+      font-family: inherit;
+    }
+    .insert-btn:hover { background: var(--border); }
+
+    .style-btn {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 4px;
+      color: var(--text); font-size: 0.9rem; width: 1.7rem; height: 1.7rem;
+      cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+      transition: background 0.15s; flex-shrink: 0; padding: 0;
+    }
+    .style-btn:hover { background: var(--border); }
+    .italic-btn { font-style: italic; }
+
+    .tb-hint {
+      font-size: 0.68rem; color: var(--muted); margin-left: 0.4rem;
+      display: flex; align-items: center; gap: 0.3rem;
+    }
+    code.tag-ex {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 3px; padding: 0.05rem 0.35rem; font-size: 0.68rem;
+    }
+
+    /* ── Find & Replace bar ──────────────────────────────────────────────────── */
+    .fnr-bar {
+      display: none; align-items: center; gap: 0.5rem; flex-wrap: wrap;
+      padding: 0.4rem 1rem; background: var(--surface);
+      border-bottom: 1px solid var(--border); flex-shrink: 0;
+    }
+    .fnr-bar.visible { display: flex; }
+
+    .fnr-group { display: flex; align-items: center; gap: 0.4rem; }
+    .fnr-label { font-size: 0.75rem; color: var(--muted); min-width: 4.5rem; text-align: right; }
+
+    .fnr-input {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 5px;
+      padding: 0.35rem 0.6rem; font-size: 0.85rem; color: var(--text); outline: none;
+      width: 16rem;
+    }
+    .fnr-input:focus { border-color: var(--accent); }
+
+    .fnr-count { font-size: 0.75rem; color: var(--muted); min-width: 4rem; }
+    .fnr-count.nomatch { color: var(--red); }
+
+    .fnr-close {
+      margin-left: auto; background: none; border: none; color: var(--muted);
+      font-size: 1.1rem; cursor: pointer; padding: 0.1rem 0.3rem; line-height: 1;
+    }
+    .fnr-close:hover { color: var(--text); }
+
+    /* ── Main layout ─────────────────────────────────────────────────────────── */
+    .main {
+      flex: 1; display: flex; overflow: hidden;
+    }
+
+    /* ── Editor pane ─────────────────────────────────────────────────────────── */
+    .editor-pane {
+      flex: 1; display: flex; flex-direction: column; overflow: hidden;
+      min-width: 200px;
+    }
+
+    .editor-pane-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.4rem 0.8rem; background: var(--surface2);
+      border-bottom: 1px solid var(--border); flex-shrink: 0;
+      font-size: 0.75rem; color: var(--muted);
+    }
+
+    .editor-pane-header span strong { color: var(--text); }
+
+    .line-list {
+      flex: 1; overflow-y: auto; padding: 0.4rem 0;
+    }
+
+    /* ── Individual line row ─────────────────────────────────────────────────── */
+    .line-row {
+      display: flex; align-items: flex-start; gap: 0;
+      border-left: 3px solid transparent;
+      transition: background 0.08s, border-color 0.08s;
+    }
+    .line-row:hover { background: rgba(99,102,241,0.06); }
+    .line-row.focused { background: rgba(99,102,241,0.12); border-left-color: var(--accent); }
+    .line-row.fnr-match { background: rgba(245,158,11,0.1); border-left-color: #78350f; }
+    .line-row.fnr-focus  { background: rgba(245,158,11,0.22); border-left-color: var(--amber); }
+
+    .line-num {
+      font-size: 0.72rem; color: var(--muted); min-width: 3rem; text-align: right;
+      padding: 0.6rem 0.5rem 0 0; font-variant-numeric: tabular-nums;
+      user-select: none; flex-shrink: 0;
+    }
+
+    .line-input-wrap { flex: 1; min-width: 0; padding: 0.3rem 0.25rem; }
+
+    .line-input {
+      width: 100%; background: transparent; border: none; outline: none;
+      font-size: 0.92rem; color: var(--text); font-family: inherit;
+      padding: 0.25rem 0.4rem; border-radius: 4px; line-height: 1.5;
+      transition: background 0.15s;
+    }
+    .line-input:focus { background: rgba(255,255,255,0.05); }
+
+    /* Note segment styling inside the input wrap */
+    .note-hint {
+      font-size: 0.72rem; color: var(--note-text); opacity: 0.7;
+      padding: 0.1rem 0.4rem 0.25rem;
+      font-style: italic;
+    }
+
+    .line-actions {
+      display: flex; gap: 0.15rem; padding: 0.3rem 0.4rem;
+      opacity: 0; transition: opacity 0.1s; flex-shrink: 0;
+    }
+    .line-row:hover .line-actions,
+    .line-row.focused .line-actions { opacity: 1; }
+
+    .row-btn {
+      background: none; border: none; border-radius: 3px;
+      color: var(--muted); cursor: pointer; font-size: 0.8rem;
+      padding: 0.2rem 0.3rem; line-height: 1;
+      transition: background 0.1s, color 0.1s;
+    }
+    .row-btn:hover { background: var(--border); color: var(--text); }
+    .row-btn.del:hover { background: #450a0a; color: #fca5a5; }
+
+    .add-line-row {
+      padding: 0.5rem 1rem;
+    }
+    .add-line-btn {
+      background: none; border: 1px dashed var(--border); border-radius: 5px;
+      color: var(--muted); cursor: pointer; font-size: 0.82rem;
+      padding: 0.35rem 0.8rem; width: 100%;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+      font-family: inherit;
+    }
+    .add-line-btn:hover { background: var(--surface); color: var(--text); border-color: var(--border2); }
+
+    /* Scrollbar */
+    .line-list::-webkit-scrollbar { width: 5px; }
+    .line-list::-webkit-scrollbar-track { background: transparent; }
+    .line-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    /* ── Preview pane ────────────────────────────────────────────────────────── */
+    .preview-pane {
+      width: 320px; flex-shrink: 0; display: flex; flex-direction: column;
+      overflow: hidden; background: var(--bg); min-width: 160px;
+    }
+
+    @media (max-width: 750px) { .preview-pane { display: none; } }
+    @media (max-width: 750px) { .drag-divider { display: none; } }
+
+    /* ── Drag divider ── */
+    .drag-divider {
+      width: 5px; flex-shrink: 0; cursor: col-resize;
+      background: var(--border); transition: background 0.15s;
+      position: relative; z-index: 10;
+    }
+    .drag-divider:hover,
+    .drag-divider.dragging { background: var(--accent); }
+    .drag-divider::after {
+      content: ''; position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 3px; height: 24px;
+      background: repeating-linear-gradient(
+        to bottom, var(--border2) 0px, var(--border2) 2px,
+        transparent 2px, transparent 5px);
+    }
+    .drag-divider:hover::after,
+    .drag-divider.dragging::after {
+      background: repeating-linear-gradient(
+        to bottom, var(--accent) 0px, var(--accent) 2px,
+        transparent 2px, transparent 5px);
+    }
+
+    /* ── Conventions reference panel ── */
+    .conventions-panel {
+      flex-shrink: 0; border-bottom: 1px solid var(--border);
+      background: var(--surface); overflow: hidden;
+    }
+    .conventions-toggle {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.4rem 0.8rem; cursor: pointer; user-select: none;
+      font-size: 0.75rem; color: var(--muted); transition: background 0.15s;
+    }
+    .conventions-toggle:hover { background: var(--surface2); }
+    .conventions-toggle strong { color: var(--text); }
+    .conventions-arrow { transition: transform 0.2s; font-style: normal; }
+    .conventions-panel.open .conventions-arrow { transform: rotate(180deg); }
+    .conventions-body {
+      display: none; padding: 0.5rem 0.8rem 0.75rem;
+      border-top: 1px solid var(--border);
+    }
+    .conventions-panel.open .conventions-body { display: block; }
+    .conv-table { width: 100%; border-collapse: collapse; font-size: 0.72rem; }
+    .conv-table td {
+      padding: 0.25rem 0.3rem; vertical-align: top;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+    .conv-table tr:last-child td { border-bottom: none; }
+    .conv-table td:first-child { white-space: nowrap; padding-right: 0.6rem; }
+    .conv-code {
+      font-family: monospace; font-size: 0.7rem;
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 3px; padding: 0.1rem 0.35rem;
+      color: #93c5fd; white-space: nowrap;
+    }
+    .conv-desc { color: var(--muted); line-height: 1.4; }
+
+    .preview-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.4rem 0.8rem; background: var(--surface2);
+      border-bottom: 1px solid var(--border); flex-shrink: 0;
+      font-size: 0.75rem; color: var(--muted);
+    }
+
+    .preview-screen {
+      flex: 1; background: var(--prev-bg); display: flex;
+      flex-direction: column; justify-content: flex-end;
+      padding: 1rem 1.1rem 1.5rem; gap: 0.5rem; overflow: hidden;
+    }
+
+    .preview-prev2 {
+      font-size: 0.85rem; color: var(--prev-dim); opacity: 0.6;
+      word-break: break-word; line-height: 1.4;
+    }
+    .preview-prev {
+      font-size: 1rem; color: var(--prev-dim);
+      word-break: break-word; line-height: 1.4;
+    }
+    .preview-divider {
+      height: 1px; background: rgba(255,255,255,0.1); margin: 0.15rem 0;
+    }
+    .preview-current {
+      font-size: 1.4rem; font-weight: 500; color: var(--prev-text);
+      word-break: break-word; line-height: 1.3;
+    }
+    .preview-note {
+      margin-top: 0.6rem; padding: 0.4rem 0.6rem;
+      background: var(--note-bg); border: 1px solid var(--note-border);
+      border-radius: 5px; font-size: 0.78rem; color: var(--note-text);
+      font-style: italic; word-break: break-word; line-height: 1.4;
+    }
+    .preview-note-label {
+      font-size: 0.65rem; font-style: normal; text-transform: uppercase;
+      letter-spacing: 0.06em; opacity: 0.7; margin-bottom: 0.2rem;
+    }
+
+    .preview-footer {
+      padding: 0.5rem 0.8rem; border-top: 1px solid var(--border);
+      font-size: 0.72rem; color: var(--muted); line-height: 1.5;
+      flex-shrink: 0;
+    }
+
+    /* ── Empty state ─────────────────────────────────────────────────────────── */
+    .empty-state {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      flex: 1; gap: 0.75rem; color: var(--muted); text-align: center; padding: 2rem;
+    }
+    .empty-state .icon { font-size: 2.5rem; }
+    .empty-state p { font-size: 0.85rem; line-height: 1.6; max-width: 24rem; }
+    .empty-state code {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 3px; padding: 0.1rem 0.4rem; font-size: 0.78rem;
+    }
+
+    /* ── Toast ───────────────────────────────────────────────────────────────── */
+    .toast {
+      position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%);
+      background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+      padding: 0.55rem 1.1rem; font-size: 0.85rem; color: var(--text);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.2s; z-index: 500; white-space: nowrap;
+    }
+    .toast.show { opacity: 1; }
+
+    /* ── Confirm modal ───────────────────────────────────────────────────────── */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.65); z-index: 400;
+      align-items: center; justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 1.6rem 1.4rem; max-width: 340px; width: 90%;
+    }
+    .modal h2 { font-size: 0.95rem; margin-bottom: 0.5rem; color: #fca5a5; }
+    .modal p  { font-size: 0.84rem; color: var(--muted); margin-bottom: 1.1rem; line-height: 1.5; }
+    .modal-btns { display: flex; gap: 0.6rem; }
+    .modal-btns button { flex: 1; }
+  </style>
+</head>
+<body>
+
+<!-- ── Header ──────────────────────────────────────────────────────────────── -->
+<header>
+  <span>✏️</span>
+  <h1>Subtitle Editor</h1>
+  <span class="file-name" id="fileName">No file loaded</span>
+
+  <button class="btn btn-secondary" onclick="document.getElementById('fileInput').click()">📂 Open</button>
+  <input type="file" id="fileInput" accept=".txt,text/*" />
+
+  <button class="btn btn-secondary" onclick="newFile()">🗋 New</button>
+  <button class="btn btn-primary"   id="downloadBtn" onclick="downloadFile()" disabled>⬇ Download</button>
+
+  <div style="width:1px;height:1.2rem;background:var(--border);margin:0 0.2rem"></div>
+
+  <a class="btn btn-ghost" href="/controller">🎙 Controller</a>
+</header>
+
+<!-- ── Toolbar ─────────────────────────────────────────────────────────────── -->
+<div class="toolbar">
+  <div class="tb-hint">
+    <span>Select text, then click a colour</span>
+    <!-- ><code class="tag-ex">[yellow]text[/]</code> -->
+  </div>
+  
+  <span class="tb-label">Color</span>
+  <button class="color-btn" style="background:#ef4444" title="Red [red]…[/]"    onclick="insertTag('red')"></button>
+  <button class="color-btn" style="background:#f97316" title="Orange [orange]…[/]" onclick="insertTag('orange')"></button>
+  <button class="color-btn" style="background:#fbbf24" title="Yellow [yellow]…[/]" onclick="insertTag('yellow')"></button>
+  <button class="color-btn" style="background:#4ade80" title="Green [green]…[/]"  onclick="insertTag('green')"></button>
+  <button class="color-btn" style="background:#22d3ee" title="Cyan [cyan]…[/]"   onclick="insertTag('cyan')"></button>
+  <button class="color-btn" style="background:#60a5fa" title="Blue [blue]…[/]"   onclick="insertTag('blue')"></button>
+  <button class="color-btn" style="background:#a78bfa" title="Purple [purple]…[/]" onclick="insertTag('purple')"></button>
+  <button class="color-btn" style="background:#f472b6" title="Pink [pink]…[/]"   onclick="insertTag('pink')"></button>
+  <button class="color-btn" style="background:#9ca3af" title="Gray [gray]…[/]"   onclick="insertTag('gray')"></button>
+  <button class="color-btn" style="background:#ffffff" title="White [white]…[/]" onclick="insertTag('white')"></button>
+
+  <div class="tb-sep"></div>
+  <span class="tb-label">Style</span>
+  <button class="style-btn" title="Bold [b]…[/]"   onclick="insertTag('b')"><b>B</b></button>
+  <button class="style-btn italic-btn" title="Italic [i]…[/]" onclick="insertTag('i')"><i>I</i></button>
+  <button class="style-btn underline-btn" title="Underline [u]…[/]" onclick="insertTag('u')"><u>U</u></button>
+
+  <div class="tb-sep"></div>
+  <span class="tb-label">Insert</span>
+  <button class="insert-btn" onclick="insertChar('[/]')" title="Close colour tag">[/] close color</button>
+  <button class="insert-btn" onclick="insertChar('|')"  title="Speaker note separator">| note</button>
+  <button class="insert-btn" onclick="insertChar('♫')"  title="Music / singing indicator">♫ music</button>
+  <button class="insert-btn" onclick="insertChar('~')"  title="Wide gap spacer (renders as 2 em spaces)">~ gap</button>
+  <button class="insert-btn" onclick="insertChar('⏎')"  title="Inline line break — shows next text on a new line in the same caption">⏎ break</button>
+  <button class="insert-btn" onclick="insertPageBlank()" title="Blank reader line with page number note">| Page…</button>
+
+  <div class="tb-sep"></div>
+  <button class="insert-btn" id="fnrToggleBtn" onclick="toggleFnr()" title="Find and Replace (Ctrl+H)">🔍 Find &amp; Replace</button>
+
+  
+</div>
+
+<!-- ── Find & Replace bar ───────────────────────────────────────────────────── -->
+<div class="fnr-bar" id="fnrBar">
+  <div class="fnr-group">
+    <span class="fnr-label">Find</span>
+    <input class="fnr-input" id="fnrFind" placeholder="Search text…" autocomplete="off" spellcheck="false" />
+    <span class="fnr-count" id="fnrCount"></span>
+    <button class="btn btn-secondary" style="padding:0.3rem 0.6rem" onclick="fnrStep(-1)" id="fnrPrev" disabled>▲</button>
+    <button class="btn btn-secondary" style="padding:0.3rem 0.6rem" onclick="fnrStep(1)"  id="fnrNext" disabled>▼</button>
+  </div>
+  <div class="fnr-group">
+    <span class="fnr-label">Replace</span>
+    <input class="fnr-input" id="fnrReplace" placeholder="Replace with…" autocomplete="off" spellcheck="false" />
+    <button class="btn btn-secondary" onclick="fnrReplaceCurrent()" id="fnrReplaceBtn" disabled>Replace</button>
+    <button class="btn btn-secondary" onclick="fnrReplaceAll()"     id="fnrReplaceAllBtn" disabled>Replace All</button>
+  </div>
+  <label style="font-size:0.78rem;color:var(--muted);display:flex;align-items:center;gap:0.3rem;cursor:pointer">
+    <input type="checkbox" id="fnrCase" /> Case sensitive
+  </label>
+  <button class="fnr-close" onclick="closeFnr()" title="Close (Esc)">✕</button>
+</div>
+
+<!-- ── Main ────────────────────────────────────────────────────────────────── -->
+<div class="main">
+
+  <!-- Editor pane -->
+  <div class="editor-pane">
+    <div class="editor-pane-header">
+      <span id="lineCount">0 lines</span>
+      <span style="font-size:0.68rem">
+        <kbd style="background:var(--border);border-radius:3px;padding:0.05rem 0.35rem;font-size:0.68rem">Enter</kbd> new line &nbsp;
+        <kbd style="background:var(--border);border-radius:3px;padding:0.05rem 0.35rem;font-size:0.68rem">↑↓</kbd> navigate &nbsp;
+        <kbd style="background:var(--border);border-radius:3px;padding:0.05rem 0.35rem;font-size:0.68rem">Ctrl+H</kbd> find &amp; replace
+      </span>
+    </div>
+
+    <div class="empty-state" id="emptyState">
+      <div class="icon">📄</div>
+      <strong>No subtitle file loaded</strong>
+      <p>Click <strong>Open</strong> to load an existing <code>.txt</code> script, or <strong>New</strong> to start from scratch.<br><br>
+      Each line is one caption. Add a speaker note after a <code>|</code> pipe character:<br>
+      <code>Announcer: Ladies and Gentlemen | Start of Act 1 Scene 1</code><br><br>
+      Start a line with a <code>|</code> to have a blank line.<br><br>
+      Add colour with tags: <code>[yellow]text[/]</code><br>
+      Mark music with: <code>♫ La la la ♫</code></p>
+    </div>
+
+    <div class="line-list" id="lineList"></div>
+
+    <div class="add-line-row" id="addLineRow" style="display:none">
+      <button class="add-line-btn" onclick="addLineAtEnd()">+ Add Line</button>
+    </div>
+  </div>
+
+  <!-- Drag divider -->
+  <div class="drag-divider" id="dragDivider" title="Drag to resize · Double-click to reset"></div>
+
+  <!-- Preview pane -->
+  <div class="preview-pane" id="previewPane">
+    <div class="preview-header">
+      <span>Reader Preview</span>
+      <span id="previewLineNum" style="color:var(--muted)">—</span>
+    </div>
+
+    <!-- Conventions reference — collapsible -->
+    <div class="conventions-panel" id="conventionsPanel">
+      <div class="conventions-toggle" onclick="toggleConventions()">
+        <strong>📋 Script Conventions</strong>
+        <span class="conventions-arrow">▾</span>
+      </div>
+      <div class="conventions-body">
+        <table class="conv-table">
+          <tr><td><span class="conv-code">[red]NAME:[/]</span></td><td class="conv-desc">Colored character name</td></tr>
+          <tr><td><span class="conv-code">[b]text[/]</span></td><td class="conv-desc">Bold</td></tr>
+          <tr><td><span class="conv-code">[i]text[/]</span></td><td class="conv-desc">Italic</td></tr>
+          <tr><td><span class="conv-code">[u]text[/]</span></td><td class="conv-desc">Underline</td></tr>
+          <tr><td><span class="conv-code">♫ text ♫</span></td><td class="conv-desc">Music / song cue</td></tr>
+          <tr><td><span class="conv-code">~</span></td><td class="conv-desc">Wide gap between speakers on one line</td></tr>
+          <tr><td><span class="conv-code">⏎</span></td><td class="conv-desc">Show two lines at once (inline break)</td></tr>
+          <tr><td><span class="conv-code">text|note</span></td><td class="conv-desc">Speaker note — controller &amp; backstage only</td></tr>
+          <tr><td><span class="conv-code">| Page 5</span></td><td class="conv-desc">Blank reader line with page marker</td></tr>
+          <tr><td><span class="conv-code">|</span></td><td class="conv-desc">Silent moment — blanks the reader display</td></tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="preview-screen" id="previewScreen">
+      <div style="color:rgba(255,255,255,0.2);font-size:0.85rem;text-align:center;margin:auto">
+        Click any line to preview
+      </div>
+    </div>
+    <div class="preview-footer">
+      <strong style="color:var(--text)">📝 Note</strong> — the note after <code>|</code> appears only on the Controller screen, not to readers.
+    </div>
+  </div>
+
+</div><!-- /main -->
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- Confirm modal -->
+<div class="modal-overlay" id="confirmModal">
+  <div class="modal">
+    <h2 id="modalTitle">⚠️ Unsaved changes</h2>
+    <p id="modalMsg">You have unsaved changes. Starting a new file will discard them.</p>
+    <div class="modal-btns">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-danger"    id="modalConfirmBtn">Discard &amp; continue</button>
+    </div>
+  </div>
+</div>
+
+<script src="./global.js"></script>
+<script>
+
+// ── State ─────────────────────────────────────────────────────────────────────
+
+let lines        = [];          // string[] — each line of the subtitle file
+let focusedIndex = -1;          // which line input is currently focused
+let lastInputEl  = null;        // the actual <input> element that last had focus
+let fileName     = 'untitled.txt';
+let unsaved      = false;
+
+
+// ── Find & Replace state ──────────────────────────────────────────────────────
+
+let fnrVisible   = false;
+let fnrMatches   = [];   // [{lineIdx, start, end}]
+let fnrCursor    = 0;
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+
+document.getElementById('fileInput').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    loadText(ev.target.result, file.name);
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+});
+
+function loadText(text, name) {
+  lines    = text.split(/\r?\n/).map(l => l.trimEnd());
+  // Remove trailing blank lines, but keep internal blank lines as spacers
+  while (lines.length && lines[lines.length - 1].trim() === '') lines.pop();
+  if (lines.length === 0) lines = [''];
+  fileName = name || 'untitled.txt';
+  unsaved  = false;
+  renderAll();
+  setUnsaved(false);
+  updateFileName();
+  toast(`Loaded ${lines.length} lines from "${fileName}"`);
+}
+
+function newFile() {
+  if (unsaved) {
+    openModal('🗋 New file', 'You have unsaved changes. Starting a new file will discard them.', () => {
+      doNew();
+    });
+  } else {
+    doNew();
+  }
+}
+
+function doNew() {
+  lines = [''];
+  fileName = 'untitled.txt';
+  focusedIndex = -1;
+  lastInputEl  = null;
+  renderAll();
+  setUnsaved(false);
+  updateFileName();
+  // Focus first line
+  setTimeout(() => focusLine(0), 50);
+}
+
+// ── Rendering ─────────────────────────────────────────────────────────────────
+
+function renderAll() {
+  const list   = document.getElementById('lineList');
+  const empty  = document.getElementById('emptyState');
+  const addRow = document.getElementById('addLineRow');
+
+  // emptyState and addLineRow are siblings of lineList — never moved into it.
+  // list.innerHTML = '' therefore only ever destroys actual line rows.
+
+  if (lines.length === 0) {
+    list.innerHTML = '';
+    empty.style.display  = 'flex';
+    addRow.style.display = 'none';
+    document.getElementById('lineCount').textContent = '0 lines';
+    document.getElementById('downloadBtn').disabled  = true;
+    return;
+  }
+
+  empty.style.display  = 'none';
+  addRow.style.display = 'block';
+  document.getElementById('downloadBtn').disabled = false;
+
+  list.innerHTML = '';
+  lines.forEach((_, i) => list.appendChild(buildRow(i)));
+  updateLineCount();
+}
+
+function buildRow(i) {
+  const row = document.createElement('div');
+  row.className = 'line-row';
+  row.id = 'row-' + i;
+  if (i === focusedIndex) row.classList.add('focused');
+
+  const numEl = document.createElement('span');
+  numEl.className = 'line-num';
+  numEl.textContent = i + 1;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'line-input-wrap';
+
+  const input = document.createElement('input');
+  input.type      = 'text';
+  input.className = 'line-input';
+  input.value     = lines[i];
+  input.setAttribute('data-index', i);
+  input.setAttribute('autocomplete', 'off');
+  input.setAttribute('spellcheck', 'true');
+  input.setAttribute('placeholder', 'Caption text…');
+
+  input.addEventListener('focus',   () => onLineFocus(i, input));
+  input.addEventListener('input',   () => onLineInput(i, input));
+  input.addEventListener('keydown', (e) => onLineKeydown(e, i, input));
+
+  wrap.appendChild(input);
+
+  const actions = document.createElement('div');
+  actions.className = 'line-actions';
+  actions.innerHTML =
+    `<button class="row-btn" title="Move up (Alt+↑)"   onclick="moveLine(${i},-1)">↑</button>` +
+    `<button class="row-btn" title="Move down (Alt+↓)" onclick="moveLine(${i}, 1)">↓</button>` +
+    `<button class="row-btn del" title="Delete line" onclick="deleteLine(${i})">✕</button>`;
+
+  row.appendChild(numEl);
+  row.appendChild(wrap);
+  row.appendChild(actions);
+
+  return row;
+}
+
+/** Rebuild a single row in-place without re-rendering everything */
+function refreshRow(i) {
+  const oldRow = document.getElementById('row-' + i);
+  if (!oldRow) return;
+  const newRow = buildRow(i);
+  oldRow.parentNode.replaceChild(newRow, oldRow);
+  // Re-focus the input if this was the focused line
+  if (i === focusedIndex) {
+    const inp = document.querySelector('#row-' + i + ' .line-input');
+    if (inp) inp.focus();
+  }
+}
+
+function updateLineCount() {
+  const nonBlank = lines.filter(l => l.trim().length > 0).length;
+  document.getElementById('lineCount').textContent =
+    `${lines.length} line${lines.length !== 1 ? 's' : ''}` +
+    (nonBlank < lines.length ? ` (${nonBlank} non-blank)` : '');
+}
+
+// ── Line focus & edit ─────────────────────────────────────────────────────────
+
+function onLineFocus(i, input) {
+  // Clear old focused row styling
+  if (focusedIndex >= 0 && focusedIndex !== i) {
+    const old = document.getElementById('row-' + focusedIndex);
+    if (old) old.classList.remove('focused');
+  }
+  focusedIndex = i;
+  lastInputEl  = input;
+  const row = document.getElementById('row-' + i);
+  if (row) row.classList.add('focused');
+  updatePreview(i);
+}
+
+function onLineInput(i, input) {
+  lines[i] = input.value;
+  setUnsaved(true);
+  updatePreview(i);
+  // Re-run find if active
+  if (fnrVisible && document.getElementById('fnrFind').value) runFnr();
+}
+
+function onLineKeydown(e, i, input) {
+  // Enter → insert new line below and focus it
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const cursor = input.selectionStart;
+    const before = input.value.slice(0, cursor);
+    const after  = input.value.slice(cursor);
+    lines[i] = before;
+    lines.splice(i + 1, 0, after);
+    renderAll();
+    setTimeout(() => focusLine(i + 1), 20);
+    return;
+  }
+
+  // Backspace at start of line (not first line) → merge with previous
+  if (e.key === 'Backspace' && input.selectionStart === 0 && input.selectionEnd === 0 && i > 0) {
+    e.preventDefault();
+    const prevLen = lines[i - 1].length;
+    lines[i - 1] = lines[i - 1] + lines[i];
+    lines.splice(i, 1);
+    renderAll();
+    setTimeout(() => {
+      focusLine(i - 1);
+      const inp = document.querySelector('#row-' + (i-1) + ' .line-input');
+      if (inp) { inp.selectionStart = inp.selectionEnd = prevLen; }
+    }, 20);
+    return;
+  }
+
+  // Delete at end of line → merge with next
+  if (e.key === 'Delete' && input.selectionStart === input.value.length && input.selectionEnd === input.value.length && i < lines.length - 1) {
+    e.preventDefault();
+    const curLen = lines[i].length;
+    lines[i] = lines[i] + lines[i + 1];
+    lines.splice(i + 1, 1);
+    renderAll();
+    setTimeout(() => {
+      focusLine(i);
+      const inp = document.querySelector('#row-' + i + ' .line-input');
+      if (inp) { inp.selectionStart = inp.selectionEnd = curLen; }
+    }, 20);
+    return;
+  }
+
+  // Arrow up → focus previous line
+  if (e.key === 'ArrowUp' && e.altKey) {
+    e.preventDefault(); moveLine(i, -1); return;
+  }
+  if (e.key === 'ArrowDown' && e.altKey) {
+    e.preventDefault(); moveLine(i, 1); return;
+  }
+  if (e.key === 'ArrowUp' && input.selectionStart === 0) {
+    e.preventDefault(); focusLine(i - 1); return;
+  }
+  if (e.key === 'ArrowDown' && input.selectionStart === input.value.length) {
+    e.preventDefault(); focusLine(i + 1); return;
+  }
+
+  // Ctrl+H → find & replace
+  if ((e.ctrlKey || e.metaKey) && e.key === 'h') {
+    e.preventDefault(); openFnr(); return;
+  }
+  // Ctrl+S → download
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+    e.preventDefault(); downloadFile(); return;
+  }
+  // Escape → close fnr if open
+  if (e.key === 'Escape' && fnrVisible) { closeFnr(); return; }
+}
+
+function focusLine(i) {
+  if (i < 0 || i >= lines.length) return;
+  const inp = document.querySelector('#row-' + i + ' .line-input');
+  if (inp) {
+    inp.focus();
+    inp.selectionStart = inp.selectionEnd = inp.value.length;
+    inp.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+}
+
+// ── Line operations ───────────────────────────────────────────────────────────
+
+function addLineAtEnd() {
+  lines.push('');
+  renderAll();
+  setTimeout(() => focusLine(lines.length - 1), 20);
+  setUnsaved(true);
+}
+
+function deleteLine(i) {
+  if (lines.length === 1) { lines[0] = ''; renderAll(); focusLine(0); setUnsaved(true); return; }
+  lines.splice(i, 1);
+  focusedIndex = Math.min(i, lines.length - 1);
+  renderAll();
+  setTimeout(() => focusLine(focusedIndex), 20);
+  setUnsaved(true);
+}
+
+function moveLine(i, delta) {
+  const j = i + delta;
+  if (j < 0 || j >= lines.length) return;
+  [lines[i], lines[j]] = [lines[j], lines[i]];
+  focusedIndex = j;
+  renderAll();
+  setTimeout(() => focusLine(j), 20);
+  setUnsaved(true);
+}
+
+// ── Toolbar: insert colour tags or special characters ─────────────────────────
+
+function insertTag(colorName) {
+  const inp = lastInputEl;
+  if (!inp) { toast('Click inside a line first, then pick a colour.'); return; }
+  // Ensure the element is still in the DOM (after a re-render it might be stale)
+  const liveInp = document.querySelector('#row-' + focusedIndex + ' .line-input') || inp;
+
+  const start = liveInp.selectionStart;
+  const end   = liveInp.selectionEnd;
+  const val   = liveInp.value;
+  const open  = '[' + colorName + ']';
+  const close = '[/]';
+
+  let newVal, cursorStart, cursorEnd;
+  if (start === end) {
+    // No selection — insert tags with cursor between them
+    newVal      = val.slice(0, start) + open + close + val.slice(start);
+    cursorStart = cursorEnd = start + open.length;
+  } else {
+    // Wrap selection
+    newVal      = val.slice(0, start) + open + val.slice(start, end) + close + val.slice(end);
+    cursorStart = start;
+    cursorEnd   = start + open.length + (end - start) + close.length;
+  }
+
+  liveInp.value = newVal;
+  liveInp.setSelectionRange(cursorStart, cursorEnd);
+  liveInp.focus();
+  lines[focusedIndex] = newVal;
+  setUnsaved(true);
+  updatePreview(focusedIndex);
+  lastInputEl = liveInp;
+}
+
+function insertChar(str) {
+  const inp = lastInputEl;
+  if (!inp) { toast('Click inside a line first.'); return; }
+  const liveInp = document.querySelector('#row-' + focusedIndex + ' .line-input') || inp;
+
+  const start = liveInp.selectionStart;
+  const end   = liveInp.selectionEnd;
+  const val   = liveInp.value;
+
+  const newVal = val.slice(0, start) + str + val.slice(end);
+  const cursor = start + str.length;
+
+  liveInp.value = newVal;
+  liveInp.setSelectionRange(cursor, cursor);
+  liveInp.focus();
+  lines[focusedIndex] = newVal;
+  setUnsaved(true);
+  updatePreview(focusedIndex);
+  lastInputEl = liveInp;
+}
+
+// ── Preview ───────────────────────────────────────────────────────────────────
+
+function updatePreview(i) {
+  const screen  = document.getElementById('previewScreen');
+  const numEl   = document.getElementById('previewLineNum');
+  numEl.textContent = 'Line ' + (i + 1);
+
+  const raw   = lines[i] || '';
+  const pipe  = raw.indexOf('|');
+  const caption = pipe === -1 ? raw          : raw.slice(0, pipe).trim();
+  const note    = pipe === -1 ? ''           : raw.slice(pipe + 1).trim();
+
+  const prev  = i > 0 ? lines[i - 1] : '';
+  const prev2 = i > 1 ? lines[i - 2] : '';
+
+  const pipePrev  = prev.indexOf('|');
+  const pipePrev2 = prev2.indexOf('|');
+  const captPrev  = pipePrev  === -1 ? prev  : prev.slice(0,  pipePrev).trim();
+  const captPrev2 = pipePrev2 === -1 ? prev2 : prev2.slice(0, pipePrev2).trim();
+
+  const hasPrev  = captPrev.trim().length  > 0;
+  const hasPrev2 = captPrev2.trim().length > 0;
+
+  screen.innerHTML =
+    (hasPrev2 ? `<div class="preview-prev2">${parseColorTags(captPrev2)}</div>` : '') +
+    (hasPrev  ? `<div class="preview-prev">${parseColorTags(captPrev)}</div>`   : '') +
+    (hasPrev  ? `<div class="preview-divider"></div>`                           : '') +
+    `<div class="preview-current">${parseColorTags(caption) || '<span style="opacity:0.25;font-weight:400;font-size:1rem">empty line</span>'}</div>` +
+    (note ? `<div class="preview-note"><div class="preview-note-label">📝 Speaker note (controller only)</div>${escHtml(note)}</div>` : '');
+}
+
+
+// ── Find & Replace ────────────────────────────────────────────────────────────
+
+const fnrBar        = document.getElementById('fnrBar');
+const fnrFindInput  = document.getElementById('fnrFind');
+const fnrReplInput  = document.getElementById('fnrReplace');
+const fnrCountEl    = document.getElementById('fnrCount');
+const fnrPrevBtn    = document.getElementById('fnrPrev');
+const fnrNextBtn    = document.getElementById('fnrNext');
+const fnrReplBtn    = document.getElementById('fnrReplaceBtn');
+const fnrReplAllBtn = document.getElementById('fnrReplaceAllBtn');
+const fnrCaseChk    = document.getElementById('fnrCase');
+
+function openFnr() {
+  fnrVisible = true;
+  fnrBar.classList.add('visible');
+  document.getElementById('fnrToggleBtn').style.background = 'var(--surface2)';
+  fnrFindInput.focus();
+  fnrFindInput.select();
+  runFnr();
+}
+
+function closeFnr() {
+  fnrVisible = false;
+  fnrBar.classList.remove('visible');
+  document.getElementById('fnrToggleBtn').style.background = '';
+  fnrMatches = []; fnrCursor = 0;
+  fnrCountEl.textContent = '';
+  fnrPrevBtn.disabled = fnrNextBtn.disabled = fnrReplBtn.disabled = fnrReplAllBtn.disabled = true;
+  clearFnrHighlights();
+}
+
+function toggleFnr() { fnrVisible ? closeFnr() : openFnr(); }
+
+fnrFindInput.addEventListener('input',  () => { fnrCursor = 0; runFnr(); });
+fnrCaseChk.addEventListener('change',   () => { fnrCursor = 0; runFnr(); });
+
+fnrFindInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); fnrStep(e.shiftKey ? -1 : 1); }
+  if (e.key === 'Escape') closeFnr();
+  e.stopPropagation();
+});
+fnrReplInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeFnr();
+  e.stopPropagation();
+});
+
+function runFnr() {
+  const query = fnrFindInput.value;
+  clearFnrHighlights();
+  fnrMatches = [];
+
+  if (!query) {
+    fnrCountEl.textContent = '';
+    fnrPrevBtn.disabled = fnrNextBtn.disabled = fnrReplBtn.disabled = fnrReplAllBtn.disabled = true;
+    return;
+  }
+
+  const caseSensitive = fnrCaseChk.checked;
+  const q = caseSensitive ? query : query.toLowerCase();
+
+  lines.forEach((line, lineIdx) => {
+    const haystack = caseSensitive ? line : line.toLowerCase();
+    let pos = 0;
+    while (true) {
+      const found = haystack.indexOf(q, pos);
+      if (found === -1) break;
+      fnrMatches.push({ lineIdx, start: found, end: found + q.length });
+      pos = found + 1;
+    }
+  });
+
+  if (fnrCursor >= fnrMatches.length) fnrCursor = 0;
+
+  const has = fnrMatches.length > 0;
+  fnrPrevBtn.disabled    = !has || fnrMatches.length < 2;
+  fnrNextBtn.disabled    = !has || fnrMatches.length < 2;
+  fnrReplBtn.disabled    = !has;
+  fnrReplAllBtn.disabled = !has;
+
+  if (fnrMatches.length === 0) {
+    fnrCountEl.textContent = query ? 'No matches' : '';
+    fnrCountEl.className = 'fnr-count nomatch';
+  } else {
+    fnrCountEl.textContent = (fnrCursor + 1) + ' / ' + fnrMatches.length;
+    fnrCountEl.className = 'fnr-count';
+  }
+
+  applyFnrHighlights();
+  scrollToFnrMatch();
+}
+
+function fnrStep(delta) {
+  if (fnrMatches.length === 0) return;
+  fnrCursor = (fnrCursor + delta + fnrMatches.length) % fnrMatches.length;
+  fnrCountEl.textContent = (fnrCursor + 1) + ' / ' + fnrMatches.length;
+  applyFnrHighlights();
+  scrollToFnrMatch();
+  // Place cursor in the matching line input
+  const m = fnrMatches[fnrCursor];
+  const inp = document.querySelector('#row-' + m.lineIdx + ' .line-input');
+  if (inp) {
+    inp.focus();
+    inp.setSelectionRange(m.start, m.end);
+  }
+}
+
+function fnrReplaceCurrent() {
+  if (fnrMatches.length === 0) return;
+  const m       = fnrMatches[fnrCursor];
+  const repl    = fnrReplInput.value;
+  const line    = lines[m.lineIdx];
+  lines[m.lineIdx] = line.slice(0, m.start) + repl + line.slice(m.end);
+  setUnsaved(true);
+
+  // Refresh just this row
+  const inp = document.querySelector('#row-' + m.lineIdx + ' .line-input');
+  if (inp) inp.value = lines[m.lineIdx];
+  updatePreview(m.lineIdx);
+
+  runFnr();
+  toast('Replaced 1 occurrence');
+}
+
+function fnrReplaceAll() {
+  if (fnrMatches.length === 0) return;
+  const query   = fnrFindInput.value;
+  const repl    = fnrReplInput.value;
+  const caseSens = fnrCaseChk.checked;
+  let count = 0;
+
+  lines = lines.map(line => {
+    const flags = caseSens ? 'g' : 'gi';
+    // Escape regex special chars in query
+    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(escaped, flags);
+    const newLine = line.replace(re, () => { count++; return repl; });
+    return newLine;
+  });
+
+  setUnsaved(true);
+  renderAll();
+  // Re-focus and re-run after render
+  setTimeout(() => {
+    if (focusedIndex >= 0) updatePreview(focusedIndex);
+    runFnr();
+    toast(`Replaced ${count} occurrence${count !== 1 ? 's' : ''}`);
+  }, 30);
+}
+
+function applyFnrHighlights() {
+  clearFnrHighlights();
+  const matchLineIdxSet = new Set(fnrMatches.map(m => m.lineIdx));
+  matchLineIdxSet.forEach(lineIdx => {
+    const row = document.getElementById('row-' + lineIdx);
+    if (row) row.classList.add('fnr-match');
+  });
+  // Highlight focused match row
+  const focused = fnrMatches[fnrCursor];
+  if (focused) {
+    const row = document.getElementById('row-' + focused.lineIdx);
+    if (row) { row.classList.add('fnr-focus'); }
+  }
+}
+
+function clearFnrHighlights() {
+  document.querySelectorAll('.line-row.fnr-match, .line-row.fnr-focus').forEach(el => {
+    el.classList.remove('fnr-match', 'fnr-focus');
+  });
+}
+
+function scrollToFnrMatch() {
+  if (fnrMatches.length === 0) return;
+  const el = document.getElementById('row-' + fnrMatches[fnrCursor].lineIdx);
+  if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+}
+
+// ── File operations ───────────────────────────────────────────────────────────
+
+function downloadFile() {
+  if (lines.length === 0) return;
+  const text = lines.join('\n') + '\n';
+  const blob = new Blob([text], { type: 'text/plain' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = fileName;
+  a.click();
+  URL.revokeObjectURL(url);
+  setUnsaved(false);
+  toast(`Downloaded "${fileName}"`);
+}
+
+function setUnsaved(state) {
+  unsaved = state;
+  const el = document.getElementById('fileName');
+  if (state) el.classList.add('unsaved'); else el.classList.remove('unsaved');
+}
+
+function updateFileName() {
+  document.getElementById('fileName').textContent = fileName;
+}
+
+// ── Global keyboard shortcuts ─────────────────────────────────────────────────
+
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'h') { e.preventDefault(); openFnr(); }
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); downloadFile(); }
+  if (e.key === 'Escape' && fnrVisible) closeFnr();
+});
+
+// ── Confirm modal ─────────────────────────────────────────────────────────────
+
+let modalCallback = null;
+
+function openModal(title, msg, cb) {
+  document.getElementById('modalTitle').textContent  = title;
+  document.getElementById('modalMsg').textContent    = msg;
+  document.getElementById('confirmModal').classList.add('open');
+  modalCallback = cb;
+  document.getElementById('modalConfirmBtn').onclick = () => { closeModal(); cb && cb(); };
+}
+
+function closeModal() {
+  document.getElementById('confirmModal').classList.remove('open');
+  modalCallback = null;
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+
+let toastTimer = null;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+// ── Warn on unload ────────────────────────────────────────────────────────────
+
+window.addEventListener('beforeunload', (e) => {
+  if (unsaved) { e.preventDefault(); e.returnValue = ''; }
+});
+
+// ── Conventions panel toggle ──────────────────────────────────────────────────
+function toggleConventions() {
+  document.getElementById('conventionsPanel').classList.toggle('open');
+}
+
+// ── Page blank quick-insert ───────────────────────────────────────────────────
+// Note: editor.html stores each line as a single raw string (caption|note) in
+// lines[] — there is no separate notes[] array (that's a controller.html thing).
+function insertPageBlank() {
+  const num = prompt('Page number (leave blank to insert a silent | separator):');
+  if (num === null) return; // cancelled
+  const text = num.trim() ? '| Page ' + num.trim() : '|';
+
+  const inp = lastInputEl;
+  if (!inp) { toast('Click inside a line first.'); return; }
+  const liveInp = document.querySelector('#row-' + focusedIndex + ' .line-input') || inp;
+
+  const start = liveInp.selectionStart;
+  const end   = liveInp.selectionEnd;
+  const val   = liveInp.value;
+
+  const newVal = val.slice(0, start) + text + val.slice(end);
+  const cursor = start + text.length;
+
+  liveInp.value = newVal;
+  liveInp.setSelectionRange(cursor, cursor);
+  liveInp.focus();
+  lines[focusedIndex] = newVal;
+  setUnsaved(true);
+  updatePreview(focusedIndex);
+  lastInputEl = liveInp;
+}
+
+// ── Drag-to-resize divider ────────────────────────────────────────────────────
+(function () {
+  const divider = document.getElementById('dragDivider');
+  const preview = document.getElementById('previewPane');
+  const mainEl  = document.querySelector('.main');
+
+  const saved = localStorage.getItem('editorPreviewWidth');
+  if (saved) preview.style.width = saved + 'px';
+
+  let dragging = false, startX = 0, startW = 0;
+
+  divider.addEventListener('pointerdown', (e) => {
+    dragging = true; startX = e.clientX; startW = preview.offsetWidth;
+    divider.classList.add('dragging');
+    divider.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+
+  divider.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const delta = startX - e.clientX;
+    const newW  = Math.min(Math.max(startW + delta, 160), mainEl.offsetWidth - 205);
+    preview.style.width = newW + 'px';
+  });
+
+  divider.addEventListener('pointerup', () => {
+    if (!dragging) return;
+    dragging = false;
+    divider.classList.remove('dragging');
+    localStorage.setItem('editorPreviewWidth', preview.offsetWidth);
+  });
+
+  divider.addEventListener('dblclick', () => {
+    preview.style.width = '320px';
+    localStorage.setItem('editorPreviewWidth', '320');
+  });
+})();
+
+</script>
+</body>
+</html>

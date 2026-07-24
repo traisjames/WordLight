@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <link rel="icon" href="./favicon.png" sizes="32x32">
+  <link rel="icon" href="./favicon.png" sizes="192x192">
+  <link rel="apple-touch-icon" href="./favicon.png">
+  <title>WordLight</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #0f172a;
+      --surface: #1e293b;
+      --border:  #334155;
+      --text:    #e2e8f0;
+      --muted:   #94a3b8;
+      --accent:  #6366f1;
+      --accent2: #E96464;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, sans-serif;
+    }
+
+    body {
+      padding: env(safe-area-inset-top) env(safe-area-inset-right)
+               env(safe-area-inset-bottom) env(safe-area-inset-left);
+    }
+
+    /* ── Header ── */
+    header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.75rem 1rem;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    header h1 {
+      font-size: 1rem;
+      font-weight: 600;
+      flex: 1;
+    }
+
+    /* ── Content ── */
+    .content {
+      max-width: 480px;
+      margin: 0 auto;
+      padding: 1.25rem 1rem 2rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    /* ── Preview ── */
+    .preview-box {
+      border-radius: 10px;
+      padding: 1.5rem 1.25rem;
+      text-align: center;
+      transition: background 0.2s;
+    }
+
+    /* ── Section ── */
+    .section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .section-title {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      padding: 0.6rem 1rem;
+      background: rgba(0,0,0,0.2);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 0.85rem 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .row:last-child { border-bottom: none; }
+
+    .row-label {
+      flex: 1;
+      font-size: 0.9rem;
+    }
+
+    .row-control {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-shrink: 0;
+    }
+
+
+    /* ── QR Code ── */
+    .qr-section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .qr-body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.85rem;
+      padding: 1.25rem 1rem;
+    }
+
+    .qr-frame {
+      background: #fff;
+      border-radius: 8px;
+      padding: 10px;
+      display: inline-flex;
+      line-height: 0;
+    }
+
+    .qr-frame img {
+      width: 180px;
+      height: 180px;
+      display: block;
+    }
+
+    .qr-url {
+      font-size: 0.8rem;
+      font-family: monospace;
+      color: var(--muted);
+      word-break: break-all;
+      text-align: center;
+    }
+
+    .qr-instructions {
+      font-size: 0.78rem;
+      color: var(--muted);
+      text-align: center;
+      line-height: 1.5;
+    }
+
+    /* ── Buttons ── */
+    .btn-row {
+      display: flex;
+      justify-content: center;
+      gap: 0.75rem;
+      align-content: stretch;
+    }
+
+
+    .btn {
+      flex: 1;
+      padding: 0.8rem;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+      color: #fff;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+    }
+    .btn:hover { opacity: 0.85; }
+
+    .btn-link {
+      background: var(--accent);
+    }
+
+    .btn-login {
+      background: var(--accent2);
+    }
+
+    
+    /* ── Color Toolbar ── */
+
+    .color-toolbar {
+      align-items: center;
+      padding: 0.45rem 1rem;
+     
+    }
+
+    .color-toolbar-label {
+      font-size: 0.7rem; text-transform: uppercase; align-items: center; letter-spacing: 0.06em;
+      color: var(--muted); user-select: none; padding: 0.45rem 1rem;
+    }
+    .color-btn {
+      width: 1.45rem; height: 1.45rem; border-radius: 50%;
+      border: 2px solid transparent; cursor: pointer; transition: transform 0.1s, border-color 0.1s;
+      flex-shrink: 0; align-items: center;
+    }
+    .color-btn:hover { transform: scale(1.2); align-items: center;border-color: rgba(255,255,255,0.5); }
+
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Theater Closed Captions</h1>
+  <span class="status-logo" id="headerlogo">
+     <img class="iconlargeimg" id="theaterLogo" alt="Theater logo" src="./iconlarge.png">
+  </span>
+  <span class="status-dot" id="statusDot"></span>
+  <span class="status-text" id="statusText">Server Offline</span>
+
+</header>
+
+<div class="content">
+
+  <!-- QR Code -->
+  <div class="qr-section">
+    <div class="section-title">Audience Caption Reader</div>
+    <div class="qr-body">
+      <div class="qr-frame">
+        <img id="qrImg" src="/api/qr" alt="QR code for caption reader" />
+      </div>
+      <div class="qr-url" id="qrUrl"></div>
+      <div class="qr-instructions">
+        Scan with your phone camera to open the web reader,<br>
+        or use the Close Captions iOS app to connect automatically.
+      </div>
+    </div>
+  </div>
+
+  <!-- Public Links -->
+  <div class="section">
+    <div class="section-title">Caption Presenters</div>
+    <div class="btn-row">
+        <a class="btn btn-link" href="/reader" title="General Audience View">General Reader</a>
+        <a class="btn btn-link" href="/backstage" title="Backstage view, shows next 4 lines.">Backstage Reader</a>
+    </div>
+  </div>
+  
+    <!-- Controller Links -->
+  <div class="section">
+    <div class="section-title">Controller Access (Login Required)</div>
+    <div class="btn-row">
+        <a class="btn btn-login" href="/controller" title="Caption Controller">Caption Controller</a>
+        <a class="btn btn-login" href="/logging" title="View logging of number of users.">Reader Logging</a>
+    </div>
+  </div>
+  
+  <!-- Editor Links Links -->
+  <div class="section">
+    <div class="section-title">Editor</div>
+    <div class="btn-row">
+        <a class="btn btn-link" href="/editor" title="Caption Editor">Caption Editor</a>
+    </div>
+  </div>
+  
+    <!-- Other Links -->
+  <div class="section">
+    <div class="section-title">Other links</div>
+    <div class="btn-row">
+        <a class="btn btn-link" href="/login" title="Login page for the Controller">Controller Login</a>
+        <a class="btn btn-link" href="/preferences" title="Reader display settings">Reader Settings</a>
+    </div>
+  </div>
+  
+      <!-- Help! -->
+  <div class="section">
+    <div class="section-title">Other links</div>
+    <div class="btn-row">
+        <a class="btn btn-link" href="/help" title="Script conventions, keyboard shortcuts, and OSC commands">Help &amp; Reference</a>
+        <a class="btn btn-link" id="supportEmailLink" href="#" title="Ask the developer for help with this system" style="display:none">Email the developer!</a>
+    </div>
+  </div>
+  
+  <div class="preview-box" id="previewBox" style="background:#000">
+
+    <div class="color-toolbar" id="colorToolbar">
+      <button class="color-btn" style="background:#ef4444" title="[red]"></button>
+      <button class="color-btn" style="background:#f97316" title="[orange]"></button>
+      <button class="color-btn" style="background:#fbbf24" title="[yellow]"></button>
+      <button class="color-btn" style="background:#4ade80" title="[green]"></button>
+      <button class="color-btn" style="background:#22d3ee" title="[cyan]"></button>
+      <button class="color-btn" style="background:#60a5fa" title="[blue]"></button>
+      <button class="color-btn" style="background:#a78bfa" title="[purple]"></button>
+      <button class="color-btn" style="background:#f472b6" title="[pink]"></button>
+      <button class="color-btn" style="background:#9ca3af" title="[gray]"></button>
+      <button class="color-btn" style="background:#ffffff" title="[white]"></button>
+    </div>
+  </div>
+
+</div><!-- /content -->
+<script src="./global.js"></script>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  // THEATER_NAME comes from global.js — set once it's loaded.
+  document.getElementById('theaterLogo').alt = THEATER_NAME;
+
+  // Show the support link only if a theater has actually set an address
+  // in global.js. This page is public — anyone who scans the QR code can
+  // reach it — so an unconfigured install shows no contact link at all
+  // rather than a broken or placeholder one.
+  if (typeof SUPPORT_EMAIL === 'string' && SUPPORT_EMAIL.trim() !== '') {
+    const supportLink = document.getElementById('supportEmailLink');
+    supportLink.href = 'mailto:' + SUPPORT_EMAIL;
+    supportLink.style.display = '';
+  }
+</script>
+<script>
+  // Show the reader URL beneath the QR code
+  document.getElementById('qrUrl').textContent =
+    window.location.protocol + '//' + window.location.host + '/reader';
+
+  // Connect as a passive observer just to show live server status.
+  const _statusDot  = document.getElementById('statusDot');
+  const _statusText = document.getElementById('statusText');
+
+  const _socket = io({ query: { type: 'home' } });
+
+  _socket.on('connect', () => {
+    _statusDot.classList.add('connected');
+    _statusText.textContent = 'Server Online';
+  });
+  _socket.on('disconnect', () => {
+    _statusDot.classList.remove('connected');
+    _statusText.textContent = 'Server Offline';
+  });
+</script>
+
+</body>
+</html>

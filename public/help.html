@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" href="./favicon.png" sizes="32x32">
+  <link rel="icon" href="./favicon.png" sizes="192x192">
+  <link rel="apple-touch-icon" href="./favicon.png">
+  <title>WordLight — Help</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, sans-serif;
+    }
+
+    /* ── Header ── */
+    header {
+      display: flex; align-items: center; gap: 0.75rem;
+      padding: 0.7rem 1rem; background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      position: sticky; top: 0; z-index: 10;
+    }
+    header h1 { font-size: 1rem; font-weight: 600; flex: 1; }
+
+    a.nav-link {
+      font-size: 0.8rem; color: var(--muted); text-decoration: none;
+      padding: 0.3rem 0.6rem; border-radius: 4px;
+      transition: background 0.15s, color 0.15s;
+    }
+    a.nav-link:hover { background: var(--border); color: var(--text); }
+
+    /* ── Page layout ── */
+    .content {
+      max-width: 780px; margin: 0 auto;
+      padding: 1.5rem 1rem 3rem;
+      display: flex; flex-direction: column; gap: 2rem;
+    }
+
+    /* ── Section blocks ── */
+    .section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px; overflow: hidden;
+    }
+
+    .section-header {
+      padding: 0.65rem 1rem;
+      background: rgba(0,0,0,0.2);
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 0.5rem;
+    }
+    .section-header h2 {
+      font-size: 0.85rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.06em;
+      color: var(--text);
+    }
+
+    /* ── Reference tables ── */
+    .ref-table {
+      width: 100%; border-collapse: collapse;
+      font-size: 0.88rem;
+    }
+    .ref-table th {
+      text-align: left; font-size: 0.72rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.05em;
+      color: var(--muted); padding: 0.5rem 1rem;
+      background: rgba(0,0,0,0.1);
+      border-bottom: 1px solid var(--border);
+    }
+    .ref-table td {
+      padding: 0.6rem 1rem; vertical-align: top;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+    .ref-table tr:last-child td { border-bottom: none; }
+    .ref-table tr:hover td { background: rgba(255,255,255,0.02); }
+
+    code {
+      font-family: monospace; font-size: 0.83rem;
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 3px; padding: 0.1rem 0.4rem;
+      color: #93c5fd; white-space: nowrap;
+    }
+
+    .desc { color: var(--muted); line-height: 1.5; }
+
+    .example {
+      margin-top: 0.3rem; font-size: 0.78rem;
+      color: rgba(255,255,255,0.35); font-style: italic;
+    }
+
+    kbd {
+      display: inline-block; background: var(--border);
+      color: var(--text); border-radius: 4px;
+      padding: 0.05rem 0.45rem; font-size: 0.78rem;
+      font-family: monospace; white-space: nowrap;
+    }
+
+    /* ── OSC section — hidden until auth check resolves ── */
+    #oscSection { display: none; }
+
+    /* ── Auth badge shown next to OSC heading ── */
+    .auth-badge {
+      font-size: 0.7rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.05em;
+      padding: 0.15rem 0.5rem; border-radius: 10px;
+      background: rgba(99,102,241,0.2); color: var(--accent);
+      border: 1px solid rgba(99,102,241,0.35);
+    }
+
+    /* ── Port callout inside OSC section ── */
+    .callout {
+      display: flex; align-items: flex-start; gap: 0.75rem;
+      margin: 0; padding: 0.8rem 1rem;
+      background: rgba(99,102,241,0.07);
+      border-bottom: 1px solid var(--border);
+      font-size: 0.85rem; color: var(--muted); line-height: 1.5;
+    }
+    .callout strong { color: var(--text); }
+
+    /* ── Print button ── */
+    .print-btn {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      background: var(--border); color: var(--text);
+      border: none; border-radius: 6px;
+      padding: 0.4rem 0.85rem; font-size: 0.82rem;
+      font-weight: 500; cursor: pointer;
+      transition: background 0.15s;
+    }
+    .print-btn:hover { background: var(--border2); }
+
+    @media print {
+      header .nav-link, header .print-btn { display: none; }
+      .section { break-inside: avoid; }
+      #oscSection { display: block !important; } /* always print if visible */
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <span>❓</span>
+  <h1>WordLight — Help &amp; Reference</h1>
+  <button class="print-btn" onclick="window.print()">🖨 Print</button>
+  <a class="nav-link" href="/home">⌂ Home</a>
+</header>
+
+<div class="content">
+
+  <!-- ── Script Conventions ─────────────────────────────────────────────── -->
+  <div class="section">
+    <div class="section-header">
+      <h2>📋 Script Conventions</h2>
+    </div>
+    <table class="ref-table">
+      <thead>
+        <tr><th>Syntax</th><th>Effect</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>[red]NAME:[/]</code></td>
+          <td>
+            <span class="desc">Colored character name. Available colors:</span><br>
+            <code>[red]</code> <code>[orange]</code> <code>[yellow]</code>
+            <code>[green]</code> <code>[cyan]</code> <code>[blue]</code>
+            <code>[purple]</code> <code>[pink]</code> <code>[gray]</code>
+            <code>[grey]</code> <code>[white]</code>
+            <div class="example">e.g. [orange]NEMO:[/] Dad! ~ [red]MARLIN:[/] You get tired.</div>
+          </td>
+        </tr>
+        <tr>
+          <td><code>[b]text[/]</code></td>
+          <td><span class="desc">Bold text</span></td>
+        </tr>
+        <tr>
+          <td><code>[i]text[/]</code></td>
+          <td><span class="desc">Italic text</span></td>
+        </tr>
+        <tr>
+          <td><code>[u]text[/]</code></td>
+          <td><span class="desc">Underlined text</span></td>
+        </tr>
+        <tr>
+          <td><code>♫ text ♫</code></td>
+          <td>
+            <span class="desc">Music or song cue indicator</span>
+            <div class="example">e.g. ♫ BIG BLUE WORLD ♫</div>
+          </td>
+        </tr>
+        <tr>
+          <td><code>~</code></td>
+          <td>
+            <span class="desc">Wide gap (two em spaces) — separates speakers on one caption line</span>
+            <div class="example">e.g. [orange]NEMO:[/] Dad! ~ [red]MARLIN:[/] You get tired.</div>
+          </td>
+        </tr>
+        <tr>
+          <td><code>⏎</code></td>
+          <td>
+            <span class="desc">Inline line break — displays two lines of text at the same time in a single caption step</span>
+            <div class="example">e.g. [orange]NEMO:[/] I can! ⏎ [red]MARLIN:[/] No you can't!</div>
+          </td>
+        </tr>
+        <tr>
+          <td><code>caption text|note</code></td>
+          <td>
+            <span class="desc">Speaker note — everything after <code>|</code> is visible only on the Controller and Backstage screens, never to the audience</span>
+            <div class="example">e.g. Welcome to the show.|Pause for applause</div>
+          </td>
+        </tr>
+        <tr>
+          <td><code>| Page 5</code></td>
+          <td>
+            <span class="desc">Blank reader line with a page marker note — audience sees nothing, Controller and Backstage show the page number</span>
+          </td>
+        </tr>
+        <tr>
+          <td><code>|</code></td>
+          <td><span class="desc">Silent moment — blanks the audience display during pauses or scene changes</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── Keyboard Shortcuts ─────────────────────────────────────────────── -->
+  <div class="section">
+    <div class="section-header">
+      <h2>⌨️ Keyboard Shortcuts</h2>
+    </div>
+    <table class="ref-table">
+      <thead>
+        <tr><th>Key</th><th>Action</th><th style="color:var(--muted);font-weight:normal">Page</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><kbd>↓</kbd> / <kbd>→</kbd> / <kbd>Space</kbd></td>
+          <td><span class="desc">Next line</span></td>
+          <td><span class="desc">Controller</span></td>
+        </tr>
+        <tr>
+          <td><kbd>↑</kbd> / <kbd>←</kbd></td>
+          <td><span class="desc">Previous line</span></td>
+          <td><span class="desc">Controller</span></td>
+        </tr>
+        <tr>
+          <td><kbd>Home</kbd></td>
+          <td><span class="desc">Jump to first line</span></td>
+          <td><span class="desc">Controller</span></td>
+        </tr>
+        <tr>
+          <td><kbd>End</kbd></td>
+          <td><span class="desc">Jump to last line</span></td>
+          <td><span class="desc">Controller</span></td>
+        </tr>
+        <tr>
+          <td><kbd>I</kbd></td>
+          <td><span class="desc">Toggle intermission overlay</span></td>
+          <td><span class="desc">Controller</span></td>
+        </tr>
+        <tr>
+          <td><kbd>N</kbd></td>
+          <td><span class="desc">Edit speaker note for current line</span></td>
+          <td><span class="desc">Controller</span></td>
+        </tr>
+        <tr>
+          <td><kbd>/</kbd> or <kbd>Ctrl+F</kbd></td>
+          <td><span class="desc">Open search bar</span></td>
+          <td><span class="desc">Controller</span></td>
+        </tr>
+        <tr>
+          <td><kbd>Escape</kbd></td>
+          <td><span class="desc">Close search / clear live type</span></td>
+          <td><span class="desc">Controller</span></td>
+        </tr>
+        <tr>
+          <td><kbd>Enter</kbd></td>
+          <td><span class="desc">Split line at cursor / insert new line below</span></td>
+          <td><span class="desc">Editor</span></td>
+        </tr>
+        <tr>
+          <td><kbd>Alt+↑</kbd> / <kbd>Alt+↓</kbd></td>
+          <td><span class="desc">Move line up / down</span></td>
+          <td><span class="desc">Editor</span></td>
+        </tr>
+        <tr>
+          <td><kbd>Ctrl+H</kbd></td>
+          <td><span class="desc">Open Find &amp; Replace</span></td>
+          <td><span class="desc">Editor / Controller</span></td>
+        </tr>
+        <tr>
+          <td><kbd>Ctrl+S</kbd></td>
+          <td><span class="desc">Download script file</span></td>
+          <td><span class="desc">Editor</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── OSC Commands — hidden until auth check resolves ───────────────── -->
+  <div class="section" id="oscSection">
+    <div class="section-header">
+      <h2>🎛 OSC Commands</h2>
+      <span class="auth-badge">Admin only</span>
+    </div>
+    <div class="callout">
+      <div>
+        <strong>Protocol:</strong> UDP · Open Sound Control &nbsp;&nbsp;
+        <strong>Default port:</strong> <code>8000</code> &nbsp;&nbsp;
+        <strong>Target IP:</strong> your Pi's IP address<br>
+        All addresses are <strong>case-insensitive</strong>. Line numbers are <strong>1-based</strong>
+        matching the numbers shown in the Controller and Editor.
+      </div>
+    </div>
+    <table class="ref-table">
+      <thead>
+        <tr><th>OSC Address</th><th>Action</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>/CC/next</code></td>
+          <td><span class="desc">Advance to the next line</span></td>
+        </tr>
+        <tr>
+          <td><code>/CC/prev</code></td>
+          <td><span class="desc">Go back one line</span></td>
+        </tr>
+        <tr>
+          <td><code>/CC/first</code></td>
+          <td><span class="desc">Jump to line 1</span></td>
+        </tr>
+        <tr>
+          <td><code>/CC/last</code></td>
+          <td><span class="desc">Jump to the last line</span></td>
+        </tr>
+        <tr>
+          <td><code>/CC/line/37</code></td>
+          <td>
+            <span class="desc">Jump to a specific line number (1-based)</span>
+            <div class="example">e.g. /CC/line/1 · /CC/line/42 · /CC/Line/100</div>
+          </td>
+        </tr>
+        <tr>
+          <td><code>/CC/intermission</code></td>
+          <td><span class="desc">Show the "Please Stand By" intermission overlay on all reader screens</span></td>
+        </tr>
+        <tr>
+          <td><code>/CC/resume</code></td>
+          <td><span class="desc">Hide the intermission overlay and return to captions</span></td>
+        </tr>
+        <tr>
+          <td><code>/CC/armed</code></td>
+          <td><span class="desc">Alert controllers that OSC is taking control — turns the controller interface green</span></td>
+        </tr>
+        <tr>
+          <td><code>/CC/disarmed</code></td>
+          <td><span class="desc">Return the controller interface to its normal appearance</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+</div><!-- /content -->
+
+<script>
+  // ── Show OSC section only if the current browser session is authenticated ──
+  fetch('/api/auth/status')
+    .then(r => r.json())
+    .then(data => {
+      if (data.authenticated) {
+        document.getElementById('oscSection').style.display = 'block';
+      }
+    })
+    .catch(() => {}); // silently ignore network errors
+</script>
+
+</body>
+</html>
