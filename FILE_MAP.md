@@ -22,7 +22,6 @@ wordlight/                          ← project root (e.g. /home/wordlight/CC_Se
 ├── GETTING_STARTED.md              ← beginner setup guide (not yet written)
 ├── FILE_MAP.md                     ← this file
 ├── oled_display.py                 ← OLED screen + buttons (Raspberry Pi only)
-├── monitor.sh                      ← load-test monitoring helper (pidstat + lsof)
 ├── .gitignore                      ← keeps .env and certs/ out of git
 │
 ├── certs/                          ← AUTO-GENERATED on first run — do not create by hand
@@ -39,8 +38,9 @@ wordlight/                          ← project root (e.g. /home/wordlight/CC_Se
 │   ├── motd-simple.template        ← login message, stats only
 │   └── power_report                ← throttle/temperature check (chmod +x)
 │
-├── load-test/                      ← stress-testing tool — runs on your Mac, NOT the Pi
-│   ├── load_test.js
+├── load-test/                      ← stress-testing tools
+│   ├── load_test.js                ← runs on your Mac, NOT the Pi
+│   ├── monitor.sh                  ← runs ON the Pi during a test (pidstat + lsof)
 │   ├── package.json                ← separate deps; keeps socket.io-client off the server
 │   └── README.md
 │
@@ -90,7 +90,7 @@ Only these belong at the root:
 | `ecosystem.config.js` | `global.js` |
 | `package.json` | `styles.css` |
 | `oled_display.py` | `favicon.png`, `iconlarge.png` |
-| `monitor.sh` | `fonts/` |
+| `.gitignore` | `fonts/` |
 | `*.md` documentation | |
 
 If a page loads but looks completely unstyled, `styles.css` probably
@@ -126,7 +126,7 @@ with anything from a delivered file list:
 npm install
 
 # Make scripts executable (this is lost when copying between machines)
-chmod +x setup/setup.sh setup/power_report monitor.sh
+chmod +x setup/setup.sh setup/power_report load-test/monitor.sh
 
 # Restart to pick up changes
 pm2 restart wordlight
@@ -147,7 +147,7 @@ does nothing until `pm2 restart wordlight`.
 ls server.js ecosystem.config.js package.json
 ls public/controller.html public/global.js public/styles.css
 ls public/fonts/OpenDyslexic-Regular.woff2
-ls setup/setup.sh
+ls setup/setup.sh load-test/monitor.sh
 
 # Both processes should show as "online"
 pm2 list

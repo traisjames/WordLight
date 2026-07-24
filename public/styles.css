@@ -19,28 +19,28 @@
  */
 @font-face {
   font-family: 'OpenDyslexic';
-  src: url('/fonts/opendyslexic/OpenDyslexic-Regular.woff2') format('woff2');
+  src: url('/fonts/OpenDyslexic-Regular.woff2') format('woff2');
   font-weight: normal;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
   font-family: 'OpenDyslexic';
-  src: url('/fonts/opendyslexic/OpenDyslexic-Bold.woff2') format('woff2');
+  src: url('/fonts/OpenDyslexic-Bold.woff2') format('woff2');
   font-weight: bold;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
   font-family: 'OpenDyslexic';
-  src: url('/fonts/opendyslexic/OpenDyslexic-Italic.woff2') format('woff2');
+  src: url('/fonts/OpenDyslexic-Italic.woff2') format('woff2');
   font-weight: normal;
   font-style: italic;
   font-display: swap;
 }
 @font-face {
   font-family: 'OpenDyslexic';
-  src: url('/fonts/opendyslexic/OpenDyslexic-BoldItalic.woff2') format('woff2');
+  src: url('/fonts/OpenDyslexic-BoldItalic.woff2') format('woff2');
   font-weight: bold;
   font-style: italic;
   font-display: swap;
