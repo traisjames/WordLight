@@ -3,14 +3,14 @@
 /*
  * OpenDyslexic — self-hosted, dyslexia-friendly font option.
  *
- * Served directly from this Pi (public/fonts/opendyslexic/), NOT loaded
+ * Served directly from this Pi (public/fonts/), NOT loaded
  * from Google Fonts or any external CDN — this works correctly even on a
  * venue WiFi that's intentionally not connected to the internet, since
  * the browser downloads the font file from the Pi the same way it
  * downloads this stylesheet itself.
  *
  * Licensed under the SIL Open Font License (OFL) v1.1, which explicitly
- * permits bundling/redistribution — see public/fonts/opendyslexic/OFL.txt
+ * permits bundling/redistribution — see public/fonts/OFL.txt
  * for the full license text, included here as required by its terms.
  *
  * font-display: swap shows the fallback font immediately while the
