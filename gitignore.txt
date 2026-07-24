@@ -1,0 +1,41 @@
+# ── Secrets — never commit these ─────────────────────────────────────────────
+# Your real configuration, including the admin password and session secret.
+# env.example is the shareable template; .env is yours alone.
+.env
+
+# Auto-generated self-signed HTTPS certificate. key.pem is a PRIVATE KEY —
+# committing it would let anyone impersonate this server. server.js
+# regenerates this folder automatically on first run, so there is never a
+# reason to commit it.
+certs/
+
+# ── Generated / installed — never commit ─────────────────────────────────────
+node_modules/
+load-test/node_modules/
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-error.log*
+
+# pm2 writes runtime logs to /tmp by default (see ecosystem.config.js), but
+# catch any that land here if that's been changed.
+logs/
+
+# ── Local install state ──────────────────────────────────────────────────────
+# setup.sh writes this to the user's home directory, but ignore it here too
+# in case it's ever run from inside the project folder.
+.wordlight-setup-state
+
+# ── Show scripts ─────────────────────────────────────────────────────────────
+# Scripts normally live in ~/Scripts (outside this folder) and are usually
+# copyrighted material that shouldn't be published. Uncomment if you ever
+# keep them inside the project.
+# Scripts/
+# *.txt
+
+# ── OS clutter ───────────────────────────────────────────────────────────────
+.DS_Store
+._*
+Thumbs.db
+desktop.ini

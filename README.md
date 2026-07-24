@@ -445,7 +445,7 @@ the usual system fonts.
 
 **This works with no internet connection.** OpenDyslexic isn't loaded
 from Google Fonts or any external source — the actual font files are
-bundled in `public/fonts/opendyslexic/` and served directly by the Pi,
+bundled in `public/fonts/` and served directly by the Pi,
 the same way it serves every other file in this project. A device
 selecting OpenDyslexic downloads it straight from the Pi over the local
 network, exactly like it downloads the HTML and CSS — nothing ever
@@ -455,7 +455,7 @@ that's intentionally not connected to it.
 The font is licensed under the SIL Open Font License (OFL) v1.1, which
 explicitly permits bundling and redistribution — the license text is
 included alongside the font files at
-`public/fonts/opendyslexic/OFL.txt`, as its terms require. Official
+`public/fonts/OFL.txt`, as its terms require. Official
 source: [github.com/antijingoist/opendyslexic](https://github.com/antijingoist/opendyslexic).
 
 ---

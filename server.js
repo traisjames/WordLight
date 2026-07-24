@@ -17,7 +17,7 @@ require('dotenv').config();
 // Default 3000 works out of the box. To use port 80 (no ":3000" in URLs
 // or QR codes), first run this one-time command on the Pi:
 //   sudo setcap 'cap_net_bind_service=+ep' $(which node)
-// Then set PORT=80 in your .env file. See .env.example for details.
+// Then set PORT=80 in your .env file. See env.example for details.
 const PORT           = process.env.PORT           || 3000;
 // --- Port for the REAL app over HTTPS. This is where browsers/QR codes
 // actually connect once HTTPS is set up — PORT above becomes a simple
@@ -35,13 +35,19 @@ const HTTPS_ENABLED  = process.env.HTTPS_ENABLED   !== 'false';
 // --- OSC (Open Sound Control) port for lighting/sound board integration
 const OSC_PORT       = process.env.OSC_PORT       || 3001;
 // --- Set the user name and password to access the Caption Controller and Logging.
+// The fallbacks are named constants so the "you're still on defaults"
+// warning further down compares against the REAL values. It previously
+// checked a hardcoded string that matched neither default, so it could
+// never actually fire.
+const DEFAULT_ADMIN_PASSWORD = 'changeme';
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'changeme';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || DEFAULT_ADMIN_PASSWORD;
 
 // --- Secret string used for encryption.  For our use, we are not too worried about this, but...
 // --- Usually you would use long random string for session security
 // --- Generate one with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-const SESSION_SECRET = process.env.SESSION_SECRET || 'lightword-closed-captions';
+const DEFAULT_SESSION_SECRET = 'lightword-closed-captions';
+const SESSION_SECRET = process.env.SESSION_SECRET || DEFAULT_SESSION_SECRET;
 
 
 /**
@@ -204,8 +210,21 @@ if (usingHttps) {
 const io = socketIo(server);
 
 
-if (SESSION_SECRET === 'default-insecure-secret') {
-  console.warn('\n⚠️  WARNING: SESSION_SECRET is not set. Copy .env.example to .env and set a real secret.\n');
+// Warn loudly if this install is still running on shipped defaults.
+// Anyone who reads the public source knows these values, so an install
+// that skipped .env setup has effectively no admin protection at all.
+if (SESSION_SECRET === DEFAULT_SESSION_SECRET || ADMIN_PASSWORD === DEFAULT_ADMIN_PASSWORD) {
+  console.warn('\n⚠️  WARNING: still using default credentials!');
+  if (ADMIN_PASSWORD === DEFAULT_ADMIN_PASSWORD) {
+    console.warn('   ADMIN_PASSWORD is the shipped default — anyone can log in to');
+    console.warn('   the controller, editor, and logging pages.');
+  }
+  if (SESSION_SECRET === DEFAULT_SESSION_SECRET) {
+    console.warn('   SESSION_SECRET is the shipped default — login sessions are forgeable.');
+  }
+  console.warn('   Fix: copy env.example to .env and set real values, then restart.');
+  console.warn('   Generate a secret with:');
+  console.warn('     node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"\n');
 }
 
 app.use(express.json());
