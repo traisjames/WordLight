@@ -374,6 +374,7 @@ app.get('/home',       (req, res) => res.sendFile(path.join(__dirname, 'public',
 app.get('/login',       (req, res) => res.sendFile(path.join(__dirname, 'public', 'login.html')));
 app.get('/reader',      (req, res) => res.sendFile(path.join(__dirname, 'public', 'reader.html')));
 app.get('/backstage',   (req, res) => res.sendFile(path.join(__dirname, 'public', 'backstage.html')));
+app.get('/teleprompt',   (req, res) => res.sendFile(path.join(__dirname, 'public', 'teleprompt.html')));
 app.get('/preferences', (req, res) => res.sendFile(path.join(__dirname, 'public', 'preferences.html')));
 app.get('/editor',      (req, res) => res.sendFile(path.join(__dirname, 'public', 'editor.html')));
 app.get('/help',        (req, res) => res.sendFile(path.join(__dirname, 'public', 'help.html')));

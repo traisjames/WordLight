@@ -269,7 +269,7 @@
     // Honour ?from= so pages other than reader.html can link here
     // and still get a working back button.
     const _from = new URLSearchParams(location.search).get('from');
-    const _allowed = { backstage: '/backstage', reader: '/reader' };
+    const _allowed = { backstage: '/backstage', reader: '/reader', teleprompt: '/teleprompt' };
     if (_from && _allowed[_from]) {
       document.getElementById('backBtn').href = _allowed[_from];
     }
