@@ -54,8 +54,41 @@
  * --text-next: colour for upcoming lines shown below the current line.
  *              Defaults to the same value as --text-prev so pages that
  *              don't set it explicitly still look correct.
+ *
+ * The colour palette below (--bg, --surface, --text, --accent, etc.) is
+ * the shared theme every page relies on. controller.html, logging.html,
+ * editor.html and others reference these via var(--bg) etc. WITHOUT
+ * defining their own, so this block must live here — if it's missing,
+ * those pages fall back to an unstyled white background. (It was
+ * accidentally dropped from this file during an earlier edit, which is
+ * exactly what caused that.)
  */
 :root {
+  --bg:          #0f172a;
+  --surface:     #1e293b;
+  --surface2:    #263348;
+  --border:      #334155;
+  --border2:     #475569;
+  --text:        #e2e8f0;
+  --muted:       #64748b;
+  --accent:      #6366f1;
+  --accent-h:    #4f46e5;
+  --current-bg:     #1e3a5f;
+  --current-border: #3b82f6;
+
+  --amber:       #f59e0b;
+  --green:       #22c55e;
+  --red:         #dc2626;
+
+  --note-bg:     #1a2a1a;
+  --note-border: #2d4a2d;
+  --note-text:   #86efac;
+
+  /* reader preview colours */
+  --prev-bg:    #000;
+  --prev-text:  #fff;
+  --prev-dim:   rgba(255,255,255,0.45);
+
   --text-next: var(--text-prev);
 }
 

@@ -1,18 +1,21 @@
 {
   "name": "wordlight",
   "version": "1.0.0",
-  "description": "WordLight \u2014 live closed caption relay server for theaters, built for Raspberry Pi",
+  "description": "WordLight — live closed caption relay server for theaters, built for Raspberry Pi",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
     "@pm2/io": "^6.1.0",
-    "cookie-parser": "^1.4.6",
+    "cookie-parser": "^1.4.7",
     "cookie-session": "^2.1.1",
     "dotenv": "^16.3.1",
-    "express": "^4.18.2",
-    "socket.io": "^4.6.1",
+    "express": "^5.2.1",
+    "socket.io": "^4.8.3",
     "qrcode": "^1.5.3"
   }
 }
