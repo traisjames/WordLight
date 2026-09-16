@@ -45,15 +45,29 @@ All dependencies are listed in `package.json` and installed with `npm install`.
 
 | Package | Version | Purpose |
 |---------|---------|---------|
-| `express` | ^4.18.2 | HTTP server and routing |
-| `socket.io` | ^4.6.1 | Real-time WebSocket events |
+| `express` | ^5.2.1 | HTTP server and routing |
+| `socket.io` | ^4.8.3 | Real-time WebSocket events |
 | `cookie-session` | ^2.1.1 | Session management |
-| `cookie-parser` | ^1.4.6 | Cookie parsing middleware |
+| `cookie-parser` | ^1.4.7 | Cookie parsing middleware |
 | `dotenv` | ^16.3.1 | Load config from `.env` file |
 | `qrcode` | ^1.5.3 | Generate QR code PNG for the home page |
-| `os-monitor` | ^2.1.3 | System resource monitoring |
+| `@pm2/io` | ^6.1.0 | Custom metrics for the pm2.io dashboard |
 
 > **OSC support** uses Node's built-in `dgram` module — no extra package required.
+>
+> **HTTPS** uses Node's built-in `https` module and generates its own certificate
+> with `openssl` — no extra package required.
+
+### A note on versions
+
+`express` is on the **5.x** line. Express 4 entered maintenance-only status in
+April 2025 with end-of-life targeted from October 2026, so new installs should be
+on 5.x. Express 5 requires Node 18 or newer, comfortably below this project's
+minimum of Node 22.
+
+Run `npm audit` after installing. If it reports vulnerabilities, `npm audit fix`
+will usually resolve them — they're typically in transitive dependencies (packages
+pulled in by the ones above) rather than anything listed here.
 
 ---
 
@@ -67,11 +81,20 @@ curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
 sudo apt-get install -y nodejs
 ```
 
+The `setup_lts.x` URL always pulls the current Long Term Support release,
+so this stays correct as new versions come out.
+
 **Verify:**
 ```bash
-node --version   # should be v18 or higher
+node --version   # should be v22 or higher
 npm --version
 ```
+
+> **Why v22 minimum:** Node 18 reached end-of-life on April 30 2025 and Node 20
+> on April 30 2026 — neither receives security patches any more. As of late 2026
+> the supported lines are **22** (Maintenance LTS), **24** (Active LTS, the best
+> choice for a new install), and 26 (Current). If `node --version` reports 18 or
+> 20, re-run the install command above to move to current LTS.
 
 ---
 
@@ -122,9 +145,17 @@ npm install
 ```bash
 cd ~/wordlight
 git pull
-npm install        # only needed if package.json changed
+npm install
 pm2 restart wordlight
 ```
+
+> **If `git pull` says "Your local changes would be overwritten by merge":**
+> this usually means npm rewrote `package.json` or `package-lock.json` on this
+> machine (installing a package directly does that as a side effect). Check what
+> changed with `git diff`, then either discard it —
+> `git checkout -- package.json package-lock.json` — or keep it with `git stash`,
+> pull, and `git stash pop`. Nothing is lost either way; git stops before merging
+> precisely so you can decide.
 
 **If you used `curl`,** download into a fresh folder and copy your own
 files across, rather than unpacking over the top:
@@ -502,7 +533,7 @@ All addresses are **case-insensitive**. Line numbers are **1-based** matching th
 | Need to turn HTTPS off while troubleshooting | Set `HTTPS_ENABLED=false` in `.env` and restart — runs plain HTTP only until you set it back |
 | Session not persisting | Make sure `SESSION_SECRET` is set in `.env` |
 | Readers not updating | Check Wi-Fi — all devices need the same network |
-| Server crashes on start | Run `npm install` again; check Node version ≥ 18 |
+| Server crashes on start | Run `npm install` again; check Node version ≥ 22 (`node --version`) |
 | QR code doesn't appear | Run `npm install` — the `qrcode` package may be missing |
 | OSC commands not working | Check UDP port `3001` isn't blocked; verify the Pi IP |
 
