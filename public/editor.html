@@ -104,6 +104,25 @@
       border-radius: 3px; padding: 0.05rem 0.35rem; font-size: 0.68rem;
     }
 
+    /* ── Find & Replace: regex extras ── */
+    .fnr-preset {
+      background: var(--bg); color: var(--text);
+      border: 1px solid var(--border); border-radius: 5px;
+      padding: 0.28rem 0.4rem; font-size: 0.76rem;
+      max-width: 13rem; min-width: 0;
+    }
+    .fnr-error {
+      display: none; background: #4a1212; color: #fca5a5;
+      border-bottom: 1px solid var(--red);
+      padding: 0.4rem 1rem; font-size: 0.78rem;
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+    }
+    .fnr-error.visible { display: block; }
+    .fnr-input.regex-mode {
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+      border-color: var(--accent);
+    }
+
     /* ── Find & Replace bar ──────────────────────────────────────────────────── */
     .fnr-bar {
       display: none; align-items: center; gap: 0.5rem; flex-wrap: wrap;
@@ -450,8 +469,16 @@
   <label style="font-size:0.78rem;color:var(--muted);display:flex;align-items:center;gap:0.3rem;cursor:pointer">
     <input type="checkbox" id="fnrCase" /> Case sensitive
   </label>
+  <label style="font-size:0.78rem;color:var(--muted);display:flex;align-items:center;gap:0.3rem;cursor:pointer"
+         title="Treat the Find box as a regular expression. Patterns apply to one line at a time, so ^ and $ mean start and end of a line.">
+    <input type="checkbox" id="fnrRegex" /> <code style="font-size:0.75rem">.*</code> Regex
+  </label>
+  <select id="fnrPreset" class="fnr-preset" title="Saved patterns from global.js">
+    <option value="">Saved patterns…</option>
+  </select>
   <button class="fnr-close" onclick="closeFnr()" title="Close (Esc)">✕</button>
 </div>
+<div class="fnr-error" id="fnrError"></div>
 
 <!-- ── Main ────────────────────────────────────────────────────────────────── -->
 <div class="main">
@@ -930,6 +957,9 @@ const fnrNextBtn    = document.getElementById('fnrNext');
 const fnrReplBtn    = document.getElementById('fnrReplaceBtn');
 const fnrReplAllBtn = document.getElementById('fnrReplaceAllBtn');
 const fnrCaseChk    = document.getElementById('fnrCase');
+const fnrRegexChk   = document.getElementById('fnrRegex');
+const fnrPresetSel  = document.getElementById('fnrPreset');
+const fnrErrorEl    = document.getElementById('fnrError');
 
 function openFnr() {
   fnrVisible = true;
@@ -954,6 +984,45 @@ function toggleFnr() { fnrVisible ? closeFnr() : openFnr(); }
 
 fnrFindInput.addEventListener('input',  () => { fnrCursor = 0; runFnr(); });
 fnrCaseChk.addEventListener('change',   () => { fnrCursor = 0; runFnr(); });
+fnrRegexChk.addEventListener('change',  () => {
+  fnrCursor = 0;
+  fnrFindInput.classList.toggle('regex-mode', fnrRegexChk.checked);
+  fnrReplInput.classList.toggle('regex-mode', fnrRegexChk.checked);
+  fnrFindInput.placeholder = fnrRegexChk.checked
+    ? 'Regular expression\u2026'
+    : 'Search text\u2026';
+  fnrReplInput.placeholder = fnrRegexChk.checked
+    ? 'Replace with\u2026  ($1 or \\1 for groups)'
+    : 'Replace with\u2026';
+  if (!fnrRegexChk.checked) clearFnrError();
+  runFnr();
+});
+
+// Populate the saved-pattern list from REGEX_PRESETS in global.js.
+(function initFnrPresets() {
+  if (typeof REGEX_PRESETS === 'undefined' || !Array.isArray(REGEX_PRESETS)) return;
+  REGEX_PRESETS.forEach((p, i) => {
+    const opt = document.createElement('option');
+    opt.value = String(i);
+    opt.textContent = p.label;
+    if (p.note) opt.title = p.note;
+    fnrPresetSel.appendChild(opt);
+  });
+  fnrPresetSel.addEventListener('change', () => {
+    const p = REGEX_PRESETS[parseInt(fnrPresetSel.value, 10)];
+    if (!p) return;
+    // A saved pattern is always a regex, so switch the mode on rather than
+    // leaving it to be searched for literally.
+    fnrRegexChk.checked = true;
+    fnrRegexChk.dispatchEvent(new Event('change'));
+    fnrFindInput.value = p.find;
+    fnrReplInput.value = p.replace;
+    fnrCursor = 0;
+    runFnr();
+    if (p.note) toast(p.note);
+    fnrPresetSel.value = '';   // reset so the same entry can be picked again
+  });
+})();
 
 fnrFindInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') { e.preventDefault(); fnrStep(e.shiftKey ? -1 : 1); }
@@ -964,6 +1033,46 @@ fnrReplInput.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') closeFnr();
   e.stopPropagation();
 });
+
+
+// ── Regex support ─────────────────────────────────────────────────────────
+//
+// Patterns run against ONE LINE AT A TIME, because the editor keeps the
+// script as an array of lines. That's why ^ and $ mean start and end of a
+// line without needing the m flag — and why a pattern can't span lines.
+
+function showFnrError(msg) {
+  fnrErrorEl.textContent = '⚠ ' + msg;
+  fnrErrorEl.classList.add('visible');
+  fnrCountEl.textContent = '';
+  fnrPrevBtn.disabled = fnrNextBtn.disabled = fnrReplBtn.disabled = fnrReplAllBtn.disabled = true;
+}
+function clearFnrError() {
+  fnrErrorEl.textContent = '';
+  fnrErrorEl.classList.remove('visible');
+}
+
+// Builds the search regex. Throws on an invalid pattern — callers catch it
+// and show the message rather than letting it break the page.
+function buildFnrRegex(global) {
+  const query = fnrFindInput.value;
+  const flags = (global === false ? '' : 'g') + (fnrCaseChk.checked ? '' : 'i');
+  if (fnrRegexChk.checked) return new RegExp(query, flags);
+  return new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), flags);
+}
+
+// JavaScript writes backreferences as $1; sed, Perl and most tutorials use
+// \1, which is what people actually type. Accept both by rewriting \1–\9
+// into $1–$9. A literal backslash-digit is vanishingly rare in a caption,
+// and \$1 still escapes to a literal if anyone needs it.
+//
+// In plain (non-regex) mode the replacement must be taken literally, so a
+// bare $ is doubled — otherwise "$&" and friends would expand silently.
+function fnrReplacement() {
+  const raw = fnrReplInput.value;
+  if (!fnrRegexChk.checked) return raw.replace(/\$/g, '$$$$');
+  return raw.replace(/\\(\d)/g, '$$$1');
+}
 
 function runFnr() {
   const query = fnrFindInput.value;
@@ -976,17 +1085,24 @@ function runFnr() {
     return;
   }
 
-  const caseSensitive = fnrCaseChk.checked;
-  const q = caseSensitive ? query : query.toLowerCase();
+  let re;
+  try {
+    re = buildFnrRegex();
+  } catch (err) {
+    showFnrError('Invalid regular expression: ' + err.message);
+    return;
+  }
+  clearFnrError();
 
   lines.forEach((line, lineIdx) => {
-    const haystack = caseSensitive ? line : line.toLowerCase();
-    let pos = 0;
-    while (true) {
-      const found = haystack.indexOf(q, pos);
-      if (found === -1) break;
-      fnrMatches.push({ lineIdx, start: found, end: found + q.length });
-      pos = found + 1;
+    re.lastIndex = 0;
+    let m, guard = 0;
+    while ((m = re.exec(line)) !== null) {
+      // A pattern that can match the empty string (say /x*/) would spin
+      // forever, because lastIndex never advances. Nudge it manually.
+      if (m[0].length === 0) { re.lastIndex++; continue; }
+      fnrMatches.push({ lineIdx, start: m.index, end: m.index + m[0].length });
+      if (++guard > 5000) break;   // pathological pattern on one line
     }
   });
 
@@ -1027,10 +1143,27 @@ function fnrStep(delta) {
 
 function fnrReplaceCurrent() {
   if (fnrMatches.length === 0) return;
-  const m       = fnrMatches[fnrCursor];
-  const repl    = fnrReplInput.value;
-  const line    = lines[m.lineIdx];
-  lines[m.lineIdx] = line.slice(0, m.start) + repl + line.slice(m.end);
+  const m    = fnrMatches[fnrCursor];
+  const line = lines[m.lineIdx];
+
+  // Slicing the replacement straight in works for plain text, but would
+  // insert "$1" literally in regex mode. Run the replace against just the
+  // matched span so backreferences resolve.
+  let replaced;
+  if (fnrRegexChk.checked) {
+    let single;
+    try {
+      single = buildFnrRegex(false);   // non-global: one substitution
+    } catch (err) {
+      showFnrError('Invalid regular expression: ' + err.message);
+      return;
+    }
+    replaced = line.slice(m.start, m.end).replace(single, fnrReplacement());
+  } else {
+    replaced = fnrReplInput.value;
+  }
+
+  lines[m.lineIdx] = line.slice(0, m.start) + replaced + line.slice(m.end);
   setUnsaved(true);
 
   // Refresh just this row
@@ -1044,18 +1177,28 @@ function fnrReplaceCurrent() {
 
 function fnrReplaceAll() {
   if (fnrMatches.length === 0) return;
-  const query   = fnrFindInput.value;
-  const repl    = fnrReplInput.value;
-  const caseSens = fnrCaseChk.checked;
-  let count = 0;
+
+  let re;
+  try {
+    re = buildFnrRegex();
+  } catch (err) {
+    showFnrError('Invalid regular expression: ' + err.message);
+    return;
+  }
+  const repl  = fnrReplacement();
+  const total = fnrMatches.length;
+  let count   = 0;
 
   lines = lines.map(line => {
-    const flags = caseSens ? 'g' : 'gi';
-    // Escape regex special chars in query
-    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const re = new RegExp(escaped, flags);
-    const newLine = line.replace(re, () => { count++; return repl; });
-    return newLine;
+    re.lastIndex = 0;
+    return line.replace(re, (...args) => {
+      const whole = args[0];
+      if (whole.length === 0) return whole;   // never consume empty matches
+      count++;
+      // Re-run on the single matched span so $1 etc. resolve, without
+      // duplicating the substitution logic.
+      return whole.replace(buildFnrRegex(false), repl);
+    });
   });
 
   setUnsaved(true);

@@ -1,0 +1,38 @@
+MARLIN: Baseline line — this one should look completely normal.
+<script>alert('xss')</script>
+<script>document.body.innerHTML='pwned'</script>
+<img src=x onerror="alert('xss')">
+<img src=x onerror=alert(1)>
+<svg/onload=alert('xss')>
+<iframe src="javascript:alert('xss')"></iframe>
+<body onload=alert('xss')>
+<a href="javascript:alert('xss')">click me</a>
+<div onmouseover="alert('xss')">hover me</div>
+<input autofocus onfocus=alert('xss')>
+<marquee onstart=alert('xss')>scrolling</marquee>
+<details open ontoggle=alert('xss')>
+<video><source onerror=alert('xss')>
+<object data="javascript:alert('xss')">
+<embed src="javascript:alert('xss')">
+<form action="javascript:alert('xss')"><button>go</button></form>
+<style>body{display:none}</style>
+<link rel="stylesheet" href="http://evil.example/x.css">
+<base href="http://evil.example/">
+<meta http-equiv="refresh" content="0;url=http://evil.example">
+"><script>alert('attribute break')</script>
+'><script>alert('single quote break')</script>
+</span><script>alert('span break')</script>
+[red]</span><img src=x onerror=alert(1)>[/]
+[red]"><img src=x onerror=alert(1)>[/]
+[b]" onmouseover="alert(1)[/]
+&lt;script&gt;alert('double encoded')&lt;/script&gt;
+&amp;lt;script&amp;gt;alert('triple encoded')&amp;lt;/script&amp;gt;
+&#60;script&#62;alert('numeric entity')&#60;/script&#62;
+&#x3C;script&#x3E;alert('hex entity')&#x3C;/script&#x3E;
+\u003cscript\u003ealert('unicode escape')\u003c/script\u003e
+<SCRIPT>alert('uppercase')</SCRIPT>
+<ScRiPt>alert('mixed case')</ScRiPt>
+<scr<script>ipt>alert('nested filter bypass')</scr</script>ipt>
+javascript:alert('bare protocol')
+data:text/html,<script>alert('data uri')</script>
+MARLIN: Final line — this should also look completely normal.

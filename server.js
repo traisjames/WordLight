@@ -207,7 +207,22 @@ if (usingHttps) {
   server = http.createServer(app);
 }
 
-const io = socketIo(server);
+// Caption scripts travel as a single socket payload. socket.io's default
+// maxHttpBufferSize is 1 MB, which a long musical can exceed — and when it
+// does, the packet is dropped at the transport layer with no application
+// error. The controller would show the script loaded while every reader
+// still had the previous one: an operator advancing lines in front of an
+// audience seeing something else. Raised here, and enforced properly in
+// the load-script handler below so oversized scripts get a real message.
+const io = socketIo(server, {
+  maxHttpBufferSize: 10 * 1024 * 1024,   // 10 MB
+});
+
+// Caption script limits. Generous — a long musical runs maybe 2,000–3,000
+// lines and a caption line is a sentence — but bounded, so a malformed or
+// malicious file can't exhaust memory on a Pi.
+const MAX_SCRIPT_LINES = 20000;
+const MAX_LINE_LENGTH  = 5000;
 
 
 // Warn loudly if this install is still running on shipped defaults.
@@ -230,12 +245,61 @@ if (SESSION_SECRET === DEFAULT_SESSION_SECRET || ADMIN_PASSWORD === DEFAULT_ADMI
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
-app.use(session({
+// Named so the same middleware can be applied to socket.io handshakes below.
+// Without that, sockets have no idea who's connecting.
+const sessionMiddleware = session({
   secret:            SESSION_SECRET,
   resave:            false,
   saveUninitialized: false,
   cookie:            { maxAge: 12 * 60 * 60 * 1000 } // Session is for 12 hours
-}));
+});
+app.use(sessionMiddleware);
+
+// ── Socket authentication ──────────────────────────────────────────────────
+//
+// Sockets used to trust socket.handshake.query.type completely. Every control
+// handler checked `if (clientType !== 'controller') return;` — but the client
+// chose that value itself. Anyone who could reach the server could connect
+// with ?type=controller and replace the script, jump lines, trigger
+// intermission, or broadcast arbitrary text to every audience phone. The
+// /controller PAGE was behind a login; the socket carrying all the actual
+// control was not. On a venue network where the address is printed on a QR
+// code in the lobby, that's a real path in.
+//
+// Now the Express session is shared with the handshake and checked before the
+// connection is accepted.
+io.engine.use(sessionMiddleware);
+
+// Types that are legitimately public. The audience can't log in — they scan a
+// QR code — so reader-family pages must stay open. These types can only
+// receive broadcasts; none of the control handlers accept them.
+const PUBLIC_SOCKET_TYPES = new Set(['reader', 'home']);
+// Types that can change what the audience sees. These require a real session.
+const PRIVILEGED_SOCKET_TYPES = new Set(['controller', 'logging']);
+
+io.use((socket, next) => {
+  const requested = socket.handshake.query.type;
+
+  if (PUBLIC_SOCKET_TYPES.has(requested)) {
+    socket.data.clientType = requested;
+    return next();
+  }
+
+  if (PRIVILEGED_SOCKET_TYPES.has(requested)) {
+    if (socket.request.session && socket.request.session.authenticated) {
+      socket.data.clientType = requested;
+      return next();
+    }
+    console.warn(`[socket] Rejected unauthenticated '${requested}' connection from ` +
+                 `${socket.handshake.address}`);
+    return next(new Error('AUTH_REQUIRED'));
+  }
+
+  // Unknown type — reject rather than guess. Anything legitimate is listed above.
+  console.warn(`[socket] Rejected unknown client type '${requested}' from ` +
+               `${socket.handshake.address}`);
+  return next(new Error('UNKNOWN_CLIENT_TYPE'));
+});
 // Block direct .html requests to auth-protected pages so express.static
 // cannot serve them without hitting requireAuth.
 const PROTECTED_PAGES = ['controller.html', 'logging.html', 'editor.html'];
@@ -570,7 +634,10 @@ function readerPayload(state) {
 // --- Sockets -----------------------------------------------------------------
 
 io.on('connection', (socket) => {
-  const clientType = socket.handshake.query.type;
+  // Set by the io.use() gate above after validating the session — deliberately
+  // NOT read from handshake.query here, so a client can't claim a type it
+  // wasn't granted.
+  const clientType = socket.data.clientType;
   const readerId   = socket.handshake.query.readerId;
 
   // -- Reader ------------------------------------------------------------------
@@ -633,9 +700,40 @@ io.on('connection', (socket) => {
   }
 
   // -- load-script: controller sends full lines array once on file load --------
-  socket.on('load-script', (data) => {
-    if (clientType !== 'controller') return;
-    if (!Array.isArray(data.lines)) return;
+  // Replies through the acknowledgement callback so the controller can tell
+  // the difference between "loaded" and "silently rejected". Without this a
+  // failed load leaves the operator and the audience looking at different
+  // scripts with nothing on screen to say so.
+  socket.on('load-script', (data, ack) => {
+    const reply = (result) => { if (typeof ack === 'function') ack(result); };
+
+    if (clientType !== 'controller') {
+      return reply({ ok: false, error: 'Only the controller can load a script.' });
+    }
+    if (!data || !Array.isArray(data.lines)) {
+      return reply({ ok: false, error: 'Script data was malformed.' });
+    }
+    if (data.lines.length > MAX_SCRIPT_LINES) {
+      return reply({ ok: false, error:
+        `Script has ${data.lines.length.toLocaleString()} lines — the limit is ` +
+        `${MAX_SCRIPT_LINES.toLocaleString()}.` });
+    }
+
+    // Every element must be a string. A script file always yields strings
+    // (the controller splits on newlines), but this handler is reachable by
+    // anything holding a controller session, so it can't be assumed.
+    for (let i = 0; i < data.lines.length; i++) {
+      const line = data.lines[i];
+      if (typeof line !== 'string') {
+        return reply({ ok: false, error: `Line ${i + 1} is not text.` });
+      }
+      if (line.length > MAX_LINE_LENGTH) {
+        return reply({ ok: false, error:
+          `Line ${i + 1} is ${line.length.toLocaleString()} characters — the limit ` +
+          `is ${MAX_LINE_LENGTH.toLocaleString()}.` });
+      }
+    }
+
     captionState = {
       ...captionState,
       lines:        data.lines,
@@ -646,6 +744,8 @@ io.on('connection', (socket) => {
     // Readers only get the three-line display slice
     io.to('readers').emit('state-update', readerPayload(captionState));
     updateLineMetrics();
+
+    reply({ ok: true, lines: data.lines.length });
   });
 
   // -- update-index: controller sends only the new index on each navigation ---
