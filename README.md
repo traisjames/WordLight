@@ -408,7 +408,7 @@ A line-by-line script editor with:
 - Collapsible script conventions reference panel
 - Download as `.txt` (`Ctrl+S`)
 - **📁 Scripts** opens a caption file from the Scripts folder on the Pi, and **💾 Save to Scripts** saves it there (`Ctrl+S` saves back to where it came from). No network share and no copy on the laptop needed.
-- **🖨 Export PDF** makes a copy to read or print: the reader's fonts, a text size and line spacing, white pages (light colours darkened for paper) or dark pages (WordLight's own colours), with or without the notes, the `#` flags and line numbers. It opens the browser's print box; choose **Save as PDF** there. The choices are remembered on that computer.
+- **🖨 Export PDF** makes a copy to read or print: the reader's fonts, a text size and line spacing, white pages (light colours darkened for paper) or dark pages (WordLight's own colours), bold speaker names, and with or without the notes, the `#` flags and line numbers. A preview beside the choices shows the result. Make PDF opens the browser's print box; choose **Save as PDF** there. The choices are remembered on that computer.
 
 ### Scripts folder and the editor login
 

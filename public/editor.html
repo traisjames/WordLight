@@ -393,8 +393,20 @@
     .modal-btns button { flex: 1; }
 
     /* ── Export PDF box ──────────────────────────────────────────────────────── */
-    .modal.export-box { max-width: 390px; }
+    .modal.export-box { max-width: 940px; width: 94%; max-height: 94vh; overflow: auto; }
     .export-box h2 { color: var(--text); margin-bottom: 0.9rem; }
+    .exp-body { display: flex; gap: 1.2rem; align-items: stretch; }
+    .exp-options { flex: 0 0 340px; }
+    .exp-preview { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.35rem; }
+    .exp-preview iframe {
+      flex: 1; width: 100%; min-height: 420px; height: 72vh; max-height: 680px;
+      border: 1px solid var(--border); border-radius: 6px; background: #525659;
+    }
+    @media (max-width: 760px) {
+      .exp-body { flex-direction: column; }
+      .exp-options { flex: none; }
+      .exp-preview iframe { height: 55vh; min-height: 300px; }
+    }
     .exp-row { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.55rem; }
     .exp-label { font-size: 0.78rem; color: var(--muted); min-width: 5.6rem; flex-shrink: 0; }
     .exp-row select {
@@ -622,24 +634,33 @@
 <div class="modal-overlay" id="exportModal">
   <div class="modal export-box" role="dialog" aria-modal="true" aria-labelledby="exportTitle">
     <h2 id="exportTitle">🖨 Export PDF</h2>
-    <label class="exp-row"><span class="exp-label">Font</span><select id="expFont"></select></label>
-    <label class="exp-row"><span class="exp-label">Text size</span><select id="expSize"></select></label>
-    <label class="exp-row"><span class="exp-label">Line spacing</span><select id="expSpacing"></select></label>
-    <div class="exp-row" role="radiogroup" aria-label="Page">
-      <span class="exp-label">Page</span>
-      <label class="exp-choice"><input type="radio" name="expPage" value="white" /> White (print)</label>
-      <label class="exp-choice"><input type="radio" name="expPage" value="dark" /> Dark (screen)</label>
-    </div>
-    <div class="exp-checks">
-      <label class="exp-choice"><input type="checkbox" id="expNotes" onchange="syncExportFlags()" /> Notes (page numbers, cues)</label>
-      <label class="exp-choice"><input type="checkbox" id="expFlags" /> # flags in the notes</label>
-      <label class="exp-choice"><input type="checkbox" id="expNumbers" /> Line numbers</label>
-    </div>
-    <p class="exp-help">The print box opens next. Set <b>Destination</b> to <b>Save as PDF</b>
-      (in Safari, use the <b>PDF</b> button at the bottom).</p>
-    <div class="modal-btns">
-      <button class="btn btn-secondary" onclick="closeExport()">Cancel</button>
-      <button class="btn btn-primary" id="exportGoBtn" onclick="runExport()">Make PDF…</button>
+    <div class="exp-body">
+      <div class="exp-options">
+        <label class="exp-row"><span class="exp-label">Font</span><select id="expFont"></select></label>
+        <label class="exp-row"><span class="exp-label">Text size</span><select id="expSize"></select></label>
+        <label class="exp-row"><span class="exp-label">Line spacing</span><select id="expSpacing"></select></label>
+        <div class="exp-row" role="radiogroup" aria-label="Page">
+          <span class="exp-label">Page</span>
+          <label class="exp-choice"><input type="radio" name="expPage" value="white" /> White (print)</label>
+          <label class="exp-choice"><input type="radio" name="expPage" value="dark" /> Dark (screen)</label>
+        </div>
+        <div class="exp-checks">
+          <label class="exp-choice"><input type="checkbox" id="expNames" /> Bold speaker names</label>
+          <label class="exp-choice"><input type="checkbox" id="expNotes" onchange="syncExportFlags()" /> Notes (page numbers, cues)</label>
+          <label class="exp-choice"><input type="checkbox" id="expFlags" /> # flags in the notes</label>
+          <label class="exp-choice"><input type="checkbox" id="expNumbers" /> Line numbers</label>
+        </div>
+        <p class="exp-help">The print box opens next. Set <b>Destination</b> to <b>Save as PDF</b>
+          (in Safari, use the <b>PDF</b> button at the bottom).</p>
+        <div class="modal-btns">
+          <button class="btn btn-secondary" onclick="closeExport()">Cancel</button>
+          <button class="btn btn-primary" id="exportGoBtn" onclick="runExport()">Make PDF…</button>
+        </div>
+      </div>
+      <div class="exp-preview">
+        <span class="exp-label">Preview</span>
+        <iframe id="expPreview" title="Preview of the PDF" sandbox="allow-same-origin"></iframe>
+      </div>
     </div>
   </div>
 </div>
@@ -1485,7 +1506,7 @@ const EXPORT_SIZES   = [10, 11, 12, 13, 14, 16, 18, 20, 24, 28];          // poi
 const EXPORT_SPACING = [['Tight', 1.2], ['Normal', 1.45], ['Roomy', 1.7], ['Double', 2]];
 const EXPORT_DEFAULTS = {
   font: 'Arial, sans-serif', size: 14, spacing: 1.45, page: 'white',
-  notes: true, flags: false, numbers: false,
+  names: true, notes: true, flags: false, numbers: false,
 };
 const EXPORT_KEY = 'editorExportOptions';   // remembers the last choices
 
@@ -1498,9 +1519,14 @@ const PAPER_COLORS = {
   gray: '#4b5563', grey: '#4b5563', white: '#111111',
 };
 
+// note: the notes. On dark pages they are WordLight's own note green (the
+// editor preview and the controller use it), so cues and page numbers are
+// easy to find. On white pages they stay grey: a paper-safe green would sit
+// too close to the dark green of a green-named character.
+// muted: the line numbers and the line under the title.
 const EXPORT_PAGES = {
-  white: { bg: '#ffffff', text: '#111111', note: '#555555', rule: '#cccccc' },
-  dark:  { bg: '#000000', text: '#ffffff', note: '#9ca3af', rule: '#333333' },
+  white: { bg: '#ffffff', text: '#111111', note: '#555555', muted: '#555555', rule: '#cccccc' },
+  dark:  { bg: '#000000', text: '#ffffff', note: '#86efac', muted: '#9ca3af', rule: '#333333' },
 };
 
 // The page's own font files, for a frame that doesn't load styles.css.
@@ -1521,7 +1547,7 @@ function loadExportOptions() {
     if (EXPORT_SIZES.includes(saved.size))                o.size    = saved.size;
     if (EXPORT_SPACING.some(s => s[1] === saved.spacing)) o.spacing = saved.spacing;
     if (saved.page === 'white' || saved.page === 'dark')  o.page    = saved.page;
-    for (const k of ['notes', 'flags', 'numbers']) {
+    for (const k of ['names', 'notes', 'flags', 'numbers']) {
       if (typeof saved[k] === 'boolean') o[k] = saved[k];
     }
   }
@@ -1551,17 +1577,23 @@ function openExport() {
   fillExportSelect('expSize', EXPORT_SIZES.map(s => [s + ' pt', s]), o.size);
   fillExportSelect('expSpacing', EXPORT_SPACING, o.spacing);
   document.querySelectorAll('input[name="expPage"]').forEach(r => { r.checked = (r.value === o.page); });
+  document.getElementById('expNames').checked   = o.names;
   document.getElementById('expNotes').checked   = o.notes;
   document.getElementById('expFlags').checked   = o.flags;
   document.getElementById('expNumbers').checked = o.numbers;
   syncExportFlags();
   document.getElementById('exportModal').classList.add('open');
   document.getElementById('exportGoBtn').focus();
+  updateExportPreview(true);
 }
 
 function closeExport() {
   document.getElementById('exportModal').classList.remove('open');
+  document.getElementById('expPreview').srcdoc = '';   // let a long preview go
 }
+
+// Any change in the export box redraws the preview.
+document.getElementById('exportModal').addEventListener('change', () => updateExportPreview(false));
 
 // The # flags are inside the notes, so they only apply with notes on.
 function syncExportFlags() {
@@ -1575,6 +1607,7 @@ function readExportForm() {
     size:    Number(document.getElementById('expSize').value),
     spacing: Number(document.getElementById('expSpacing').value),
     page:    page ? page.value : 'white',
+    names:   document.getElementById('expNames').checked,
     notes:   document.getElementById('expNotes').checked,
     flags:   document.getElementById('expFlags').checked,
     numbers: document.getElementById('expNumbers').checked,
@@ -1592,20 +1625,111 @@ function exportPaperColors(html) {
     (m, hex) => byHex[hex.toLowerCase()] ? '<span style="color:' + byHex[hex.toLowerCase()] + '">' : m);
 }
 
-// Take the # flags (#Check_Sound, #SFX ...) out of a note and tidy the commas
-// they leave behind.
+// Take the # flags out of a note. A note is a list joined with ", " (the
+// converter writes: notes, page note, cues, then flags), and a flag item
+// carries its own words: "#Check_Spelling <the word>", "#Fill_In <what>".
+// Those words go with the flag. A flag's words can hold commas too ("space
+// added: a, b"), so the items after a flag go as well, until a page number or
+// a cue. A # tag in the middle of an ordinary note loses just the tag.
 function exportDropFlags(note) {
-  return note
-    .replace(/#[A-Za-z][\w-]*/g, '')
-    .replace(/\s*,\s*(?=,|$)/g, '')     // a comma with nothing after it
-    .replace(/^\s*,\s*/, '')            // a comma with nothing before it
-    .replace(/\s{2,}/g, ' ')
-    .trim();
+  const kept = [];
+  let inFlag = false;
+  for (const item of note.split(',').map(s => s.trim())) {
+    if (/^#[A-Za-z]/.test(item)) { inFlag = true; continue; }   // not "#5"
+    if (inFlag && !/^(Page|Cue|Scene|Song)\b/i.test(item)) continue;
+    inFlag = false;
+    const rest = item.replace(/(^|\s)#[A-Za-z][\w-]*/g, '$1').replace(/\s{2,}/g, ' ').trim();
+    if (rest) kept.push(rest);
+  }
+  return kept.join(', ');
+}
+
+// ── Bold speaker names ──
+// A name is the label before the first colon at the start of a caption line
+// (or after a ⏎ break), like "[blue]MARLIN:[/]", "ALL EXCEPT PLAYER 11:" or
+// "MORRIS, ELI, and LILA:". The label counts as a name when it is coloured,
+// when every word starts with a capital (joining words like "and" aside), or
+// when the same label starts three or more lines of the file. A line that
+// begins with dialogue such as "Listen: ..." can still be caught by the
+// capitals rule; that is the trade for catching names nobody coloured.
+
+const NAME_LABEL     = /^(\s*)([^:]{1,60}?):(?=\s|$)/;   // label, then ":" and a space or the end
+const NAME_JOINERS   = new Set(['and', '&', 'or', 'of', 'the', 'except']);
+const NAME_NOT_SPEECH = /[!?;"“”()]/;
+
+function exportLooksLikeName(label) {
+  if (NAME_NOT_SPEECH.test(label) || !/\p{L}/u.test(label)) return false;
+  const words = label.split(/\s+/);
+  return words.length <= 6 &&
+    words.every(w => /^[\p{Lu}\d]/u.test(w) || NAME_JOINERS.has(w.toLowerCase()));
+}
+
+// Labels that start three or more lines: names, even in lower case.
+function exportCommonLabels(srcLines) {
+  const count = new Map();
+  for (const raw of srcLines) {
+    const caption = stripNote(raw || '').replace(/\[(?:\/|[A-Za-z]+)\]/g, '');
+    for (const seg of caption.split('⏎')) {
+      const m = NAME_LABEL.exec(seg);
+      if (!m) continue;
+      const label = m[2].trim();
+      if (label && label.split(/\s+/).length <= 6 && !NAME_NOT_SPEECH.test(label)) {
+        count.set(label, (count.get(label) || 0) + 1);
+      }
+    }
+  }
+  return new Set([...count].filter(([, n]) => n >= 3).map(([label]) => label));
+}
+
+// Wrap each name in a caption's HTML in <b>. The work is done on the DOM with
+// a Range, so a name inside a coloured span stays coloured, and a colour that
+// runs on past the name is split cleanly ("<b><span blue>PIP:</span></b><span
+// blue> text</span>"). The HTML comes from parseColorTags(), already escaped.
+function exportBoldNames(html, common) {
+  const box = document.createElement('div');
+  box.innerHTML = html;
+  const starts = [null, ...box.querySelectorAll('br')];
+  // Last line first, so wrapping one name never moves where another starts.
+  for (let k = starts.length - 1; k >= 0; k--) exportBoldNameAt(box, starts[k], common);
+  return box.innerHTML;
+}
+
+function exportBoldNameAt(box, br, common) {
+  // The characters of this caption line, each with its text node and offset.
+  const chars  = [];
+  const walker = document.createTreeWalker(box, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
+  walker.currentNode = br || box;
+  let node;
+  while ((node = walker.nextNode()) && chars.length < 120) {
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      if (node.tagName === 'BR') break;
+      continue;
+    }
+    for (let i = 0; i < node.nodeValue.length; i++) chars.push([node, i]);
+  }
+  const m = NAME_LABEL.exec(chars.map(([n, i]) => n.nodeValue[i]).join(''));
+  if (!m || !m[2].trim()) return;
+  const first = m[1].length;          // skip leading spaces
+  const last  = m[0].length - 1;      // the colon
+  const range = document.createRange();
+  range.setStart(chars[first][0], chars[first][1]);
+  range.setEnd(chars[last][0], chars[last][1] + 1);
+
+  // Coloured: the label starts inside a colour, or a colour starts within it.
+  // (box has no parent, so closest() can't look outside this caption.)
+  const coloured = !!chars[first][0].parentElement.closest('span[style*="color"]') ||
+                   !!range.cloneContents().querySelector('span[style*="color"]');
+  const label = m[2].trim();
+  if (!coloured && !exportLooksLikeName(label) && !common.has(label)) return;
+
+  const b = document.createElement('b');
+  b.appendChild(range.extractContents());
+  range.insertNode(b);
 }
 
 // One line of the file as HTML. A line is "caption | note"; either part can be
-// empty. num is the editor's line number.
-function exportLineHtml(raw, num, o) {
+// empty. num is the editor's line number; common is from exportCommonLabels().
+function exportLineHtml(raw, num, o, common) {
   const t = raw.trim();
   if (t === '' || t === '|') return '<div class="gap"></div>';   // blank or silent line
 
@@ -1617,6 +1741,7 @@ function exportLineHtml(raw, num, o) {
 
   let capHtml = caption ? parseColorTags(caption) : '';
   if (o.page === 'white') capHtml = exportPaperColors(capHtml);
+  if (o.names && capHtml) capHtml = exportBoldNames(capHtml, common);
   // Page numbers stand out, so the PDF can be matched to the paper script.
   const noteHtml = escHtml(note).replace(/\bPage \d+[A-Za-z]?\b/g, '<b>$&</b>');
 
@@ -1628,9 +1753,12 @@ function exportLineHtml(raw, num, o) {
     '</div></div>';
 }
 
-function buildExportHtml(srcLines, o, title) {
-  const pal  = EXPORT_PAGES[o.page] || EXPORT_PAGES.white;
-  const body = srcLines.map((raw, i) => exportLineHtml(raw || '', i + 1, o)).join('\n');
+// previewZoom: for the preview in the export box, draw the page as a sheet
+// scaled to fit (screen only; printing ignores it).
+function buildExportHtml(srcLines, o, title, previewZoom) {
+  const pal    = EXPORT_PAGES[o.page] || EXPORT_PAGES.white;
+  const common = o.names ? exportCommonLabels(srcLines) : new Set();
+  const body   = srcLines.map((raw, i) => exportLineHtml(raw || '', i + 1, o, common)).join('\n');
   const when = new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
   const css =
     EXPORT_FONT_FACES +
@@ -1642,15 +1770,20 @@ function buildExportHtml(srcLines, o, title) {
     'body{margin:0;background:' + pal.bg + ';color:' + pal.text + ';font-family:' + o.font +
       ';font-size:' + o.size + 'pt;line-height:' + o.spacing + '}' +
     'h1{font-size:1.2em;line-height:1.25;margin:0 0 .2em}' +
-    '.meta{font-size:.7em;color:' + pal.note + ';margin:0 0 1.1em;padding-bottom:.6em;' +
+    '.meta{font-size:.7em;color:' + pal.muted + ';margin:0 0 1.1em;padding-bottom:.6em;' +
       'border-bottom:1px solid ' + pal.rule + '}' +
     '.ln{display:flex;align-items:baseline;gap:.7em;margin:0 0 .3em;' +
       'break-inside:avoid;page-break-inside:avoid}' +
-    '.num{flex:0 0 3.2em;text-align:right;font-size:.62em;color:' + pal.note +
+    '.num{flex:0 0 3.2em;text-align:right;font-size:.62em;color:' + pal.muted +
       ';font-family:system-ui,-apple-system,sans-serif;font-variant-numeric:tabular-nums}' +
     '.txt{flex:1;min-width:0;overflow-wrap:break-word}' +
     '.note{font-size:.72em;line-height:1.35;color:' + pal.note + ';margin-top:.1em}' +
-    '.gap{height:.8em}';
+    '.gap{height:.8em}' +
+    (previewZoom
+      ? '@media screen{html{zoom:' + previewZoom + ';background:#525659}' +
+        'body{width:8.5in;min-height:11in;margin:16px auto;padding:.6in .65in;' +
+        'box-shadow:0 2px 10px rgba(0,0,0,.5)}}'
+      : '');
   return '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">' +
     '<title>' + escHtml(title) + '</title><style>' + css + '</style></head><body>' +
     '<h1>' + escHtml(title) + '</h1>' +
@@ -1658,11 +1791,40 @@ function buildExportHtml(srcLines, o, title) {
     body + '</body></html>';
 }
 
+// The PDF's title and name: the file name without ".txt".
+function exportTitle() {
+  return (fileName || '').replace(/\.[^.]+$/, '').trim() || 'Script';
+}
+
+// Redraw the preview in the export box with the current choices, keeping the
+// place it was scrolled to. The preview frame is sandboxed with no scripts;
+// "allow-same-origin" lets it load OpenDyslexic and lets this page read its
+// scroll position.
+function updateExportPreview(fromTop) {
+  const frame = document.getElementById('expPreview');
+  let ratio = 0;
+  if (!fromTop) {
+    try {
+      const d = frame.contentDocument.documentElement;
+      ratio = d.scrollHeight > d.clientHeight ? d.scrollTop / (d.scrollHeight - d.clientHeight) : 0;
+    } catch (e) { /* first draw */ }
+  }
+  // Fit a letter-size sheet (8.5in = 816px) across the box, with room for the
+  // scroll bar and the grey surround.
+  const zoom = Math.max(0.2, Math.min(1, (frame.clientWidth - 44) / 816)).toFixed(3);
+  frame.onload = () => {
+    if (!ratio) return;
+    const d = frame.contentDocument.documentElement;
+    d.scrollTop = ratio * (d.scrollHeight - d.clientHeight);
+  };
+  frame.srcdoc = buildExportHtml(lines, readExportForm(), exportTitle(), zoom);
+}
+
 function runExport() {
   const o = readExportForm();
   saveExportOptions(o);
   closeExport();
-  const title = (fileName || '').replace(/\.[^.]+$/, '').trim() || 'Script';
+  const title = exportTitle();
 
   const old = document.getElementById('exportFrame');
   if (old) old.remove();

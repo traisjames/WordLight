@@ -22,9 +22,20 @@ or print. The box asks for:
 - **Page**: white, for printing, where the light colours (yellow, green, cyan,
   white) become a darker shade of the same colour so they read on paper; or
   dark, WordLight's black background and its own colours, for a screen.
+- **Bold speaker names**: the label before the first colon at the start of a
+  caption line (or after a ⏎) is bold when it is coloured, when every word
+  starts with a capital ("and", "&", "except" aside), or when the same label
+  starts three or more lines. The name keeps its colour. A line that begins
+  with dialogue like "Listen: ..." can be caught by the capitals rule.
 - **Notes** (page numbers in bold, cues, scene titles) under their line;
   **# flags** (`#Check_Sound`, `#SFX` ...) in the notes; **line numbers**
-  matching the editor.
+  matching the editor. On dark pages the notes are WordLight's note green
+  (as in the editor preview and the controller); on white pages, grey.
+  With flags off, a flag goes with its own words
+  (`#Check_Spelling <word>`, `#Fill_In <what>`), so only notes for reading
+  are left.
+- **Preview** beside the choices: the whole file drawn as the page will
+  look, redrawn on every change (it keeps its scroll place).
 
 Make PDF opens the browser's print box; set Destination to **Save as PDF**
 (Safari: the PDF button). The PDF is named after the file. The choices are
