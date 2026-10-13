@@ -99,6 +99,20 @@
   --text-next: var(--text-prev);
 }
 
+/* ── Header ──
+   Used by home.html (and mirrored inline by controller/logging/help, whose
+   own rules override these since a page's inline <style> comes after this
+   linked stylesheet). Without these, home.html's connection indicator and
+   logo render unstyled. */
+    .status-logo { display: flex; align-items: center; flex: 1; }
+    .iconlargeimg { height: 1rem; width: auto; }
+    .status-dot {
+      width: 9px; height: 9px; border-radius: 50%;
+      background: #ef4444; transition: background 0.3s;
+    }
+    .status-dot.connected { background: #22c55e; }
+    .status-text { font-size: 0.78rem; color: var(--muted); }
+
 /* ── Settings button ── */
     .settings-btn {
       position: fixed;
@@ -200,6 +214,19 @@
       font-size: calc(var(--font-size) * 0.6);
       color: var(--text-next);
       opacity: 0.6;
+      line-height: 1.4;
+      word-break: break-word;
+    }
+
+    /* Fourth upcoming line — shown on backstage and teleprompt only, which
+       display more look-ahead context than the audience reader does. This
+       rule was missing entirely for a long time, so that line fell back to
+       the browser default: wrong size, and it ignored the chosen font. */
+    .next-line-4 {
+      font-family: var(--font-family);
+      font-size: calc(var(--font-size) * 0.5);
+      color: var(--text-next);
+      opacity: 0.5;
       line-height: 1.4;
       word-break: break-word;
     }
