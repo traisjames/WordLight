@@ -34,6 +34,12 @@ const HTTPS_PORT     = process.env.HTTPS_PORT      || 3443;
 const HTTPS_ENABLED  = process.env.HTTPS_ENABLED   !== 'false';
 // --- OSC (Open Sound Control) port for lighting/sound board integration
 const OSC_PORT       = process.env.OSC_PORT       || 3001;
+// --- Script Converter on this same Pi (optional). The controller page shows
+// a "Pause 6 hours" button while the converter has unfinished work; WordLight
+// asks the converter for that over this address. It must be on this computer
+// (the converter only answers these requests from itself). http or https both
+// work: if one fails, WordLight tries the other. Set to "off" to never ask.
+const CONVERTER_URL  = process.env.CONVERTER_URL  || 'http://127.0.0.1:8090';
 // --- Set the user name and password to access the Caption Controller and Logging.
 // The fallbacks are named constants so the "you're still on defaults"
 // warning further down compares against the REAL values. It previously
@@ -42,6 +48,16 @@ const OSC_PORT       = process.env.OSC_PORT       || 3001;
 const DEFAULT_ADMIN_PASSWORD = 'changeme';
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || DEFAULT_ADMIN_PASSWORD;
+// --- Optional second login for script volunteers: the editor and the Scripts
+// folder only, never the controller or logging. Leave EDITOR_PASSWORD unset to
+// have no editor login (then the editor needs the admin login, as before).
+const EDITOR_USERNAME = process.env.EDITOR_USERNAME || 'editor';
+const EDITOR_PASSWORD = process.env.EDITOR_PASSWORD || '';
+// --- The Scripts folder (the "CC Storage" share setup.sh makes). The editor and
+// the controller can open caption files from it, and the editor can save to
+// it, straight from the browser. SCRIPTS_NAME is what the pages call it.
+const SCRIPTS_DIR    = process.env.SCRIPTS_DIR    || require('path').join(require('os').homedir(), 'Scripts');
+const SCRIPTS_NAME   = process.env.SCRIPTS_NAME   || 'Scripts';
 
 // --- Secret string used for encryption.  For our use, we are not too worried about this, but...
 // --- Usually you would use long random string for session security
@@ -78,6 +94,8 @@ const pm2io = require('@pm2/io');
 const QRCode       = require('qrcode');
 const { networkInterfaces } = require('os');
 const dgram           = require('dgram');  // built-in — no package needed for OSC
+const { ScriptsFolder, ScriptsError, MAX_BYTES: SCRIPTS_MAX_BYTES } = require('./scripts-folder');
+const scriptsFolder   = new ScriptsFolder(SCRIPTS_DIR, SCRIPTS_NAME);
 
 const app    = express();
 
@@ -207,12 +225,35 @@ if (usingHttps) {
   server = http.createServer(app);
 }
 
-const io = socketIo(server);
+// Caption scripts travel as a single socket payload. socket.io's default
+// maxHttpBufferSize is 1 MB, which a long musical can exceed — and when it
+// does, the packet is dropped at the transport layer with no application
+// error. The controller would show the script loaded while every reader
+// still had the previous one: an operator advancing lines in front of an
+// audience seeing something else. Raised here, and enforced properly in
+// the load-script handler below so oversized scripts get a real message.
+const io = socketIo(server, {
+  maxHttpBufferSize: 10 * 1024 * 1024,   // 10 MB
+});
+
+// Caption script limits. Generous — a long musical runs maybe 2,000–3,000
+// lines and a caption line is a sentence — but bounded, so a malformed or
+// malicious file can't exhaust memory on a Pi.
+const MAX_SCRIPT_LINES = 20000;
+const MAX_LINE_LENGTH  = 5000;
 
 
 // Warn loudly if this install is still running on shipped defaults.
 // Anyone who reads the public source knows these values, so an install
 // that skipped .env setup has effectively no admin protection at all.
+if (EDITOR_PASSWORD && EDITOR_PASSWORD === ADMIN_PASSWORD) {
+  console.warn('\n⚠️  EDITOR_PASSWORD is the same as ADMIN_PASSWORD, so the editor login also');
+  console.warn('   opens the controller. Give the editor login its own password in .env.\n');
+}
+if (EDITOR_PASSWORD && EDITOR_USERNAME === ADMIN_USERNAME) {
+  console.warn('\n⚠️  EDITOR_USERNAME is the same as ADMIN_USERNAME; the editor login is off.');
+  console.warn('   Give it its own name in .env (default: editor).\n');
+}
 if (SESSION_SECRET === DEFAULT_SESSION_SECRET || ADMIN_PASSWORD === DEFAULT_ADMIN_PASSWORD) {
   console.warn('\n⚠️  WARNING: still using default credentials!');
   if (ADMIN_PASSWORD === DEFAULT_ADMIN_PASSWORD) {
@@ -230,12 +271,61 @@ if (SESSION_SECRET === DEFAULT_SESSION_SECRET || ADMIN_PASSWORD === DEFAULT_ADMI
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
-app.use(session({
+// Named so the same middleware can be applied to socket.io handshakes below.
+// Without that, sockets have no idea who's connecting.
+const sessionMiddleware = session({
   secret:            SESSION_SECRET,
   resave:            false,
   saveUninitialized: false,
   cookie:            { maxAge: 12 * 60 * 60 * 1000 } // Session is for 12 hours
-}));
+});
+app.use(sessionMiddleware);
+
+// ── Socket authentication ──────────────────────────────────────────────────
+//
+// Sockets used to trust socket.handshake.query.type completely. Every control
+// handler checked `if (clientType !== 'controller') return;` — but the client
+// chose that value itself. Anyone who could reach the server could connect
+// with ?type=controller and replace the script, jump lines, trigger
+// intermission, or broadcast arbitrary text to every audience phone. The
+// /controller PAGE was behind a login; the socket carrying all the actual
+// control was not. On a venue network where the address is printed on a QR
+// code in the lobby, that's a real path in.
+//
+// Now the Express session is shared with the handshake and checked before the
+// connection is accepted.
+io.engine.use(sessionMiddleware);
+
+// Types that are legitimately public. The audience can't log in — they scan a
+// QR code — so reader-family pages must stay open. These types can only
+// receive broadcasts; none of the control handlers accept them.
+const PUBLIC_SOCKET_TYPES = new Set(['reader', 'home']);
+// Types that can change what the audience sees. These require a real session.
+const PRIVILEGED_SOCKET_TYPES = new Set(['controller', 'logging']);
+
+io.use((socket, next) => {
+  const requested = socket.handshake.query.type;
+
+  if (PUBLIC_SOCKET_TYPES.has(requested)) {
+    socket.data.clientType = requested;
+    return next();
+  }
+
+  if (PRIVILEGED_SOCKET_TYPES.has(requested)) {
+    if (socket.request.session && socket.request.session.authenticated) {
+      socket.data.clientType = requested;
+      return next();
+    }
+    console.warn(`[socket] Rejected unauthenticated '${requested}' connection from ` +
+                 `${socket.handshake.address}`);
+    return next(new Error('AUTH_REQUIRED'));
+  }
+
+  // Unknown type — reject rather than guess. Anything legitimate is listed above.
+  console.warn(`[socket] Rejected unknown client type '${requested}' from ` +
+               `${socket.handshake.address}`);
+  return next(new Error('UNKNOWN_CLIENT_TYPE'));
+});
 // Block direct .html requests to auth-protected pages so express.static
 // cannot serve them without hitting requireAuth.
 const PROTECTED_PAGES = ['controller.html', 'logging.html', 'editor.html'];
@@ -328,6 +418,42 @@ function emitAudienceCount() {
   io.to('controllers').emit('audience-count', { count: getAudienceReaderCount() });
 }
 
+// Who is connected right now, for the Script Converter's pause rules
+// (GET /api/connections below). Read straight from the socket.io rooms, like
+// the counts above, so a closed tab drops out the moment its socket closes,
+// and a phone that went to sleep drops out when it misses socket.io's
+// heartbeat (about 45 seconds). The teleprompter connects as backstage.
+// The home, logging and editor pages are not counted: none of them means a
+// show is on (the editor doesn't connect to the server at all).
+function getConnectionCounts() {
+  return {
+    controllers: io.sockets.adapter.rooms.get('controllers')?.size || 0,
+    readers:     getAudienceReaderCount(),
+    backstage:   io.sockets.adapter.rooms.get('backstage')?.size || 0,
+  };
+}
+
+// True when a request comes from this computer itself (loopback) — for the
+// endpoints only other programs on the Pi should reach: oled_display.py's
+// metrics and the Script Converter's "who is connected?".
+function isLocalRequest(req) {
+  const ip = req.ip || req.socket.remoteAddress || '';
+  return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+}
+
+// GET /api/connections — served on the main port AND on the plain-http
+// redirect port (see the redirect server near the bottom), so the converter's
+// default address, http://127.0.0.1:3000/api/connections, gets an answer
+// directly whether or not HTTPS is on, without a redirect and a TLS
+// handshake every two seconds.
+function sendConnections(req, res) {
+  if (!isLocalRequest(req)) {
+    return res.status(403).json({ error: 'This endpoint only accepts local requests' });
+  }
+  res.setHeader('Cache-Control', 'no-store');
+  res.json(getConnectionCounts());
+}
+
 function updateSessionMetrics() {
   uniqueReadersMetric.set(uniqueReaderIds.size);
   totalSessionsMetric.set(totalSessionCount);
@@ -361,11 +487,50 @@ function updateShowStateMetrics() {
 
 // --- Auth ---------------------------------------------------------------------
 
+// Two logins: the admin login (ADMIN_USERNAME) opens everything; the editor
+// login (EDITOR_USERNAME, only when EDITOR_PASSWORD is set) opens the editor
+// and the Scripts folder, never the controller or logging. A session from
+// the editor login has session.editor set and session.authenticated unset,
+// so every existing admin check (pages and sockets) keeps refusing it.
+function isAdmin(req)  { return !!(req.session && req.session.authenticated); }
+function isEditor(req) { return isAdmin(req) || !!(req.session && req.session.editor); }
+
 function requireAuth(req, res, next) {
-  if (req.session && req.session.authenticated) return next();
+  if (isAdmin(req)) return next();
+  if (req.originalUrl.startsWith('/api/')) {
+    return res.status(401).json({ error: 'Sign in with the admin login.' });
+  }
+  if (isEditor(req)) {
+    // Signed in, but only for the editor: say so, rather than a login loop.
+    return res.status(403).send(EDITOR_ONLY_PAGE);
+  }
   req.session.returnTo = req.originalUrl;
   res.redirect('/login');
 }
+
+// The editor and the Scripts folder: the admin login or the editor login.
+function requireEditor(req, res, next) {
+  if (isEditor(req)) return next();
+  if (req.originalUrl.startsWith('/api/')) {
+    return res.status(401).json({ error: 'Sign in again (reload the page).' });
+  }
+  req.session.returnTo = req.originalUrl;
+  res.redirect('/login');
+}
+
+const EDITOR_ONLY_PAGE = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WordLight</title><link rel="stylesheet" href="/styles.css">
+<style>body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,sans-serif;
+display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:1rem}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:2rem;
+max-width:26rem}h1{font-size:1.15rem;margin:0 0 .6rem}p{color:#94a3b8;line-height:1.5;margin:0 0 1.2rem}
+a{display:inline-block;margin-right:.6rem;padding:.5rem .9rem;border-radius:6px;text-decoration:none;
+background:var(--accent);color:#fff}a.alt{background:var(--border);color:var(--text)}</style></head>
+<body><div class="card"><h1>This login opens the editor only</h1>
+<p>You're signed in with the editor login, which opens the script editor and the Scripts folder.
+The caption controller and logging need the admin login.</p>
+<a href="/editor">Open the editor</a><a class="alt" href="/logout">Sign out</a></div></body></html>`;
 
 // --- Routes ------------------------------------------------------------------
 
@@ -376,7 +541,7 @@ app.get('/reader',      (req, res) => res.sendFile(path.join(__dirname, 'public'
 app.get('/backstage',   (req, res) => res.sendFile(path.join(__dirname, 'public', 'backstage.html')));
 app.get('/teleprompt',   (req, res) => res.sendFile(path.join(__dirname, 'public', 'teleprompt.html')));
 app.get('/preferences', (req, res) => res.sendFile(path.join(__dirname, 'public', 'preferences.html')));
-app.get('/editor',      (req, res) => res.sendFile(path.join(__dirname, 'public', 'editor.html')));
+app.get('/editor',      requireEditor, (req, res) => res.sendFile(path.join(__dirname, 'public', 'editor.html')));
 app.get('/help',        (req, res) => res.sendFile(path.join(__dirname, 'public', 'help.html')));
 app.get('/controller',  requireAuth, (req, res) => res.sendFile(path.join(__dirname, 'public', 'controller.html')));
 app.get('/logging',     requireAuth, (req, res) => res.sendFile(path.join(__dirname, 'public', 'logging.html')));
@@ -388,6 +553,14 @@ app.post('/login', (req, res) => {
     const redirectTo = req.session.returnTo || '/controller';
     delete req.session.returnTo;
     return res.redirect(redirectTo);
+  }
+  // The editor login: the editor (and the Scripts folder) only.
+  if (EDITOR_PASSWORD && EDITOR_USERNAME !== ADMIN_USERNAME &&
+      username === EDITOR_USERNAME && password === EDITOR_PASSWORD) {
+    req.session.authenticated = false;
+    req.session.editor = true;
+    delete req.session.returnTo;
+    return res.redirect('/editor');
   }
   res.redirect('/login?error=1');
 });
@@ -463,8 +636,68 @@ app.get('/api/qr', async (req, res) => {
 // Auth status — public endpoint so help.html can show the OSC section
 // only to authenticated users without a full page redirect.
 app.get('/api/auth/status', (req, res) => {
-  res.json({ authenticated: !!(req.session && req.session.authenticated) });
+  // authenticated: the admin login (as before); editor: the editor login or admin
+  res.json({ authenticated: isAdmin(req), editor: isEditor(req) });
 });
+
+// --- Scripts folder ----------------------------------------------------------
+//
+// The editor and the controller open caption files straight from the Scripts
+// folder, and the editor saves to it (see scripts-folder.js for the rules).
+// Every route needs the editor login or the admin login.
+//
+//   GET  /api/scripts/status            {available, name}
+//   GET  /api/scripts?folder=a/b        {name, folder, parts, folders, files}
+//   GET  /api/scripts/file?path=a/b.txt {name, folder, text, sha, mtime}
+//   POST /api/scripts/file?folder=a&name=b.txt&base=<sha>   body: the text
+//        -> {name, folder, wanted, sha, same, replaced, renamed}
+//
+// The text goes as text/plain (not JSON), so the app-wide JSON body limit
+// (100 kB) doesn't apply; a long musical's caption file is about that size.
+
+function scriptsError(res, err) {
+  if (err instanceof ScriptsError) return res.status(err.status).json({ error: err.message });
+  console.error('[scripts] ' + err.message);
+  const msg = err.code === 'EACCES' || err.code === 'EPERM'
+    ? `WordLight isn't allowed to write in the ${scriptsFolder.label} folder.`
+    : `Something went wrong with the ${scriptsFolder.label} folder (${err.code || err.message}).`;
+  res.status(500).json({ error: msg });
+}
+
+app.get('/api/scripts/status', requireEditor, (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ available: scriptsFolder.available(), name: scriptsFolder.label });
+});
+
+app.get('/api/scripts', requireEditor, (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  try { res.json(scriptsFolder.list(req.query.folder)); }
+  catch (err) { scriptsError(res, err); }
+});
+
+app.get('/api/scripts/file', requireEditor, (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  try { res.json(scriptsFolder.read(req.query.path)); }
+  catch (err) { scriptsError(res, err); }
+});
+
+app.post('/api/scripts/file', requireEditor,
+  express.text({ type: 'text/plain', limit: SCRIPTS_MAX_BYTES }),
+  (req, res) => {
+    if (typeof req.body !== 'string') {
+      return res.status(400).json({ error: 'Nothing was sent to save.' });
+    }
+    try {
+      const r = scriptsFolder.save(req.query.folder, req.query.name, req.body,
+                                   req.query.base || null);
+      const where = r.folder ? `${scriptsFolder.label}/${r.folder}` : scriptsFolder.label;
+      const how = r.same ? 'already there' : r.replaced ? 'replaced' :
+                  r.renamed ? `new name, "${r.wanted}" left alone` : 'new file';
+      console.log(`[scripts] Saved "${r.name}" in ${where} (${how}, ` +
+                  `${isAdmin(req) ? 'admin' : 'editor'} login)`);
+      res.json(r);
+    } catch (err) { scriptsError(res, err); }
+  });
 
 // Network info for the controller page's connection-info tooltip — lists
 // every detected interface (WiFi, wired, etc.) with its IP, plus the
@@ -488,9 +721,7 @@ app.get('/api/network-info', requireAuth, (req, res) => {
 // there's no reason to let anything else on the network post arbitrary
 // values into the dashboard.
 app.post('/api/oled-metrics', (req, res) => {
-  const ip = req.ip || req.socket.remoteAddress || '';
-  const isLocalhost = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
-  if (!isLocalhost) {
+  if (!isLocalRequest(req)) {
     return res.status(403).json({ error: 'This endpoint only accepts local requests' });
   }
 
@@ -504,6 +735,10 @@ app.post('/api/oled-metrics', (req, res) => {
 
   res.json({ success: true });
 });
+
+// Who is connected, for the Script Converter on this Pi: it asks every two
+// seconds and only works while nobody is (see sendConnections above).
+app.get('/api/connections', sendConnections);
 
 app.get('/api/log', requireAuth, (req, res) => {
   res.json({
@@ -567,10 +802,160 @@ function readerPayload(state) {
   };
 }
 
+// --- Script Converter (optional, on this same Pi) ---------------------------
+//
+// The Script Converter turns show scripts into caption files. On the Pi it
+// keeps its work away from shows by asking GET /api/connections (above), so
+// while a controller is open it never runs. What it can't know is that
+// another show is coming in a couple of hours after the controller closes —
+// so the controller page shows a "Pause 6 hours" button while the converter
+// has unfinished work, and WordLight passes the press on.
+//
+// WordLight asks the converter only while a controller page is open, every
+// few seconds, and pushes what it hears to the controllers as
+// 'converter-status'. Nothing is ever sent to readers or backstage. If the
+// converter isn't installed or isn't running, the answer is "not available"
+// and the controller shows nothing.
+//
+// The converter's API (127.0.0.1 only, no password):
+//   GET  /api/status  -> {app:"script-converter", unfinished, running, frozen,
+//                         why, paused_until (epoch seconds or null), ...}
+//   POST /api/pause   -> pause for 6 hours from now (again = 6 hours from now)
+//   POST /api/resume  -> end the pause
+// Both POSTs answer with the same JSON as /api/status.
+
+const CONVERTER_OFF        = /^(off|false|no|none)$/i.test(CONVERTER_URL.trim());
+const CONVERTER_POLL_MS    = 5000;
+const CONVERTER_TIMEOUT_MS = 2000;
+let   converterBase        = CONVERTER_URL.trim();   // may switch http <-> https once
+let   converterStatus      = { available: false };
+let   converterTimer       = null;
+let   converterInFlight    = null;
+
+if (!CONVERTER_OFF) {
+  try {
+    const host = new URL(converterBase).hostname;
+    if (!['127.0.0.1', 'localhost', '[::1]', '::1'].includes(host)) {
+      console.warn(`⚠️  CONVERTER_URL (${converterBase}) is not on this computer. The Script ` +
+                   `Converter only answers WordLight from the same Pi, so its pause button ` +
+                   `won't appear on the controller.`);
+    }
+  } catch (e) {
+    console.warn(`⚠️  CONVERTER_URL (${converterBase}) is not a valid address — the ` +
+                 `Script Converter's pause button is turned off.`);
+    converterBase = null;
+  }
+}
+
+// One request to the converter. Always resolves (never rejects) with
+// { ok: true, data } or { ok: false, reason }.
+function converterRequest(base, method, apiPath) {
+  return new Promise((resolve) => {
+    let url;
+    try { url = new URL(apiPath, base); } catch (e) { return resolve({ ok: false, reason: 'bad-url' }); }
+    const lib = url.protocol === 'https:' ? https : http;
+    const req = lib.request(url, {
+      method,
+      timeout: CONVERTER_TIMEOUT_MS,
+      // The converter's https (if used) has a self-signed certificate, and
+      // this request never leaves the Pi, so there is nothing to verify.
+      rejectUnauthorized: false,
+      agent: false,
+      headers: method === 'POST' ? { 'Content-Length': 0 } : {},
+    }, (res) => {
+      let body = '';
+      res.setEncoding('utf8');
+      res.on('data', (chunk) => { if (body.length < 65536) body += chunk; });
+      res.on('end', () => {
+        if (res.statusCode !== 200) return resolve({ ok: false, reason: 'http-' + res.statusCode });
+        try { resolve({ ok: true, data: JSON.parse(body) }); }
+        catch (e) { resolve({ ok: false, reason: 'bad-json' }); }
+      });
+    });
+    req.on('timeout', () => req.destroy(Object.assign(new Error('timeout'), { code: 'TIMEOUT' })));
+    req.on('error', (err) => resolve({ ok: false, reason: err.code || err.message }));
+    req.end();
+  });
+}
+
+// Like converterRequest, but if the answer failed in a way that means "wrong
+// kind of connection" (http to an https converter or the other way round),
+// try the other scheme once and keep using it if it works. Refused (not
+// running), timeouts and HTTP errors are real answers and aren't retried.
+async function askConverter(method, apiPath) {
+  if (CONVERTER_OFF || !converterBase) return { ok: false, reason: 'off' };
+  const first = await converterRequest(converterBase, method, apiPath);
+  if (first.ok || ['ECONNREFUSED', 'TIMEOUT', 'bad-json'].includes(first.reason)
+      || String(first.reason).startsWith('http-')) {
+    return first;
+  }
+  const other = converterBase.startsWith('https:')
+    ? converterBase.replace(/^https:/, 'http:')
+    : converterBase.replace(/^http:/, 'https:');
+  const second = await converterRequest(other, method, apiPath);
+  if (second.ok) {
+    console.log(`[converter] The Script Converter answers on ${other} — using that.`);
+    converterBase = other;
+    return second;
+  }
+  return first;
+}
+
+// What the controller page needs to know — only plain values, never the
+// converter's raw answer.
+function controllerConverterStatus(r) {
+  if (!r.ok || !r.data || r.data.app !== 'script-converter') return { available: false };
+  const d = r.data;
+  return {
+    available:   true,
+    unfinished:  !!d.unfinished,
+    working:     !!d.running && !d.frozen,
+    why:         typeof d.why === 'string' ? d.why.slice(0, 400) : '',
+    pausedUntil: typeof d.paused_until === 'number' ? d.paused_until : null,
+  };
+}
+
+function setConverterStatus(next) {
+  const changed = JSON.stringify(next) !== JSON.stringify(converterStatus);
+  converterStatus = next;
+  if (changed) io.to('controllers').emit('converter-status', converterStatus);
+}
+
+// Ask the converter now. Calls that overlap share one request.
+function refreshConverterStatus() {
+  if (!converterInFlight) {
+    converterInFlight = askConverter('GET', '/api/status')
+      .then((r) => setConverterStatus(controllerConverterStatus(r)))
+      .finally(() => { converterInFlight = null; });
+  }
+  return converterInFlight;
+}
+
+function controllersConnected() {
+  return (io.sockets.adapter.rooms.get('controllers')?.size || 0) > 0;
+}
+
+// Keep asking while at least one controller page is open; stop when the
+// last one closes (nobody would see the answer).
+function watchConverter() {
+  if (CONVERTER_OFF || converterTimer) return;
+  converterTimer = setInterval(() => {
+    if (!controllersConnected()) {
+      clearInterval(converterTimer);
+      converterTimer = null;
+      return;
+    }
+    refreshConverterStatus();
+  }, CONVERTER_POLL_MS);
+}
+
 // --- Sockets -----------------------------------------------------------------
 
 io.on('connection', (socket) => {
-  const clientType = socket.handshake.query.type;
+  // Set by the io.use() gate above after validating the session — deliberately
+  // NOT read from handshake.query here, so a client can't claim a type it
+  // wasn't granted.
+  const clientType = socket.data.clientType;
   const readerId   = socket.handshake.query.readerId;
 
   // -- Reader ------------------------------------------------------------------
@@ -619,6 +1004,15 @@ io.on('connection', (socket) => {
     // controller tab shows the right number right away, rather than
     // waiting for the next reader to connect or disconnect.
     socket.emit('audience-count', { count: getAudienceReaderCount() });
+    // Script Converter: ask now (the last answer may be hours old), tell this
+    // tab, and keep asking while any controller is open. The converter
+    // checks WordLight every 2 seconds, so ask once more a little later to
+    // pick up that it has seen this controller and stopped.
+    if (!CONVERTER_OFF) {
+      refreshConverterStatus().then(() => socket.emit('converter-status', converterStatus));
+      setTimeout(refreshConverterStatus, 3000);
+      watchConverter();
+    }
   }
 
   // -- Logging page ------------------------------------------------------------
@@ -633,9 +1027,40 @@ io.on('connection', (socket) => {
   }
 
   // -- load-script: controller sends full lines array once on file load --------
-  socket.on('load-script', (data) => {
-    if (clientType !== 'controller') return;
-    if (!Array.isArray(data.lines)) return;
+  // Replies through the acknowledgement callback so the controller can tell
+  // the difference between "loaded" and "silently rejected". Without this a
+  // failed load leaves the operator and the audience looking at different
+  // scripts with nothing on screen to say so.
+  socket.on('load-script', (data, ack) => {
+    const reply = (result) => { if (typeof ack === 'function') ack(result); };
+
+    if (clientType !== 'controller') {
+      return reply({ ok: false, error: 'Only the controller can load a script.' });
+    }
+    if (!data || !Array.isArray(data.lines)) {
+      return reply({ ok: false, error: 'Script data was malformed.' });
+    }
+    if (data.lines.length > MAX_SCRIPT_LINES) {
+      return reply({ ok: false, error:
+        `Script has ${data.lines.length.toLocaleString()} lines — the limit is ` +
+        `${MAX_SCRIPT_LINES.toLocaleString()}.` });
+    }
+
+    // Every element must be a string. A script file always yields strings
+    // (the controller splits on newlines), but this handler is reachable by
+    // anything holding a controller session, so it can't be assumed.
+    for (let i = 0; i < data.lines.length; i++) {
+      const line = data.lines[i];
+      if (typeof line !== 'string') {
+        return reply({ ok: false, error: `Line ${i + 1} is not text.` });
+      }
+      if (line.length > MAX_LINE_LENGTH) {
+        return reply({ ok: false, error:
+          `Line ${i + 1} is ${line.length.toLocaleString()} characters — the limit ` +
+          `is ${MAX_LINE_LENGTH.toLocaleString()}.` });
+      }
+    }
+
     captionState = {
       ...captionState,
       lines:        data.lines,
@@ -646,6 +1071,8 @@ io.on('connection', (socket) => {
     // Readers only get the three-line display slice
     io.to('readers').emit('state-update', readerPayload(captionState));
     updateLineMetrics();
+
+    reply({ ok: true, lines: data.lines.length });
   });
 
   // -- update-index: controller sends only the new index on each navigation ---
@@ -681,6 +1108,32 @@ io.on('connection', (socket) => {
     updateShowStateMetrics();
   });
 
+  // -- converter-pause / converter-resume --------------------------------------
+  // The controller's Script Converter button. Passed on to the converter on
+  // this Pi; every open controller gets the new state. Replies through the
+  // acknowledgement so the button can say when the converter didn't answer.
+  for (const [event, apiPath, done] of [
+    ['converter-pause',  '/api/pause',  'paused for 6 hours'],
+    ['converter-resume', '/api/resume', 'resumed'],
+  ]) {
+    socket.on(event, async (data, ack) => {
+      const reply = (result) => { if (typeof ack === 'function') ack(result); };
+      if (clientType !== 'controller') {
+        return reply({ ok: false, error: 'Only the controller can do this.' });
+      }
+      const r = await askConverter('POST', apiPath);
+      const next = controllerConverterStatus(r);
+      if (!next.available) {
+        return reply({ ok: false, error: 'The Script Converter did not answer.' });
+      }
+      setConverterStatus(next);
+      console.log(`[converter] Script Converter ${done} from the controller`);
+      reply({ ok: true, status: next });
+      // The converter's "why" text catches up on its next check (2 s).
+      setTimeout(refreshConverterStatus, 2500);
+    });
+  }
+
   // socket.io removes a disconnecting socket from all its rooms before this
   // fires, so recomputing room sizes here correctly reflects the post-
   // disconnect counts — this is what keeps the Connected Readers / Connected
@@ -707,6 +1160,12 @@ server.listen(activePort, '0.0.0.0', () => {
       console.log(`   Home:    ${activeScheme}://${ip}:${activePort}/home`);
     });
   }
+  console.log(`   Scripts: ${scriptsFolder.root} ("${scriptsFolder.label}")` +
+              (scriptsFolder.available() ? '' : ' — NOT THERE: editor and controller ' +
+               'can\'t open it (set SCRIPTS_DIR in .env)'));
+  console.log(`   Editor login: ${EDITOR_PASSWORD && EDITOR_USERNAME !== ADMIN_USERNAME
+    ? `"${EDITOR_USERNAME}" (editor and Scripts folder only)`
+    : 'off (set EDITOR_PASSWORD in .env); the editor uses the admin login'}`);
 
   // Give every pm2.io metric a real starting value immediately, rather than
   // leaving them blank in the dashboard until the first connect/navigation
@@ -725,6 +1184,9 @@ server.listen(activePort, '0.0.0.0', () => {
 // request is redirected straight to the HTTPS equivalent on HTTPS_PORT.
 if (usingHttps) {
   const redirectApp = express();
+  // The one exception to the redirect: the Script Converter's local question
+  // (loopback only, just three numbers) is answered here directly.
+  redirectApp.get('/api/connections', sendConnections);
   redirectApp.use((req, res) => {
     const portSuffix = HTTPS_PORT === 443 ? '' : `:${HTTPS_PORT}`;
     res.redirect(301, `https://${req.hostname}${portSuffix}${req.originalUrl}`);

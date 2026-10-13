@@ -22,6 +22,7 @@ wordlight/                          ← project root (e.g. /home/wordlight/CC_Se
 ├── GETTING_STARTED.md              ← beginner setup guide (not yet written)
 ├── FILE_MAP.md                     ← this file
 ├── oled_display.py                 ← OLED screen + buttons (Raspberry Pi only)
+├── scripts-folder.js               ← the Scripts folder: list, open, save (used by server.js)
 ├── .gitignore                      ← keeps .env and certs/ out of git
 │
 ├── certs/                          ← AUTO-GENERATED on first run — do not create by hand
@@ -47,6 +48,7 @@ wordlight/                          ← project root (e.g. /home/wordlight/CC_Se
 └── public/                         ← everything the browser can reach
     ├── global.js                   ← shared JS + THEATER_NAME
     ├── styles.css                  ← shared styles + OpenDyslexic @font-face
+    ├── scripts-picker.js           ← the Scripts folder dialog (editor + controller)
     ├── home.html                   ← landing page + QR code
     ├── login.html                  ← admin login
     ├── controller.html             ← operator's script navigator
@@ -90,6 +92,7 @@ Only these belong at the root:
 | `ecosystem.config.js` | `global.js` |
 | `package.json` | `styles.css` |
 | `oled_display.py` | `favicon.png`, `iconlarge.png` |
+| `scripts-folder.js` | `scripts-picker.js` |
 | `.gitignore` | `fonts/` |
 | `*.md` documentation | |
 

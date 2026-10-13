@@ -63,6 +63,13 @@
  * accidentally dropped from this file during an earlier edit, which is
  * exactly what caused that.)
  */
+/*
+ * The hidden attribute always hides, even on elements whose class sets a
+ * display (.btn is inline-flex). The Scripts folder buttons on the editor
+ * and controller start hidden and appear only when the server has one.
+ */
+[hidden] { display: none !important; }
+
 :root {
   --bg:          #0f172a;
   --surface:     #1e293b;

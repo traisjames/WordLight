@@ -148,6 +148,20 @@
     .counter { font-size: 0.85rem; color: var(--muted); margin-left: auto; }
     .counter strong { color: var(--text); }
 
+    /* ── Script Converter (only while it has unfinished work) ──
+       Styled like the audience count in the header: quiet, out of the
+       way of the show buttons on the left. */
+    .converter-wrap { display: flex; align-items: center; gap: 0.4rem; }
+    .converter-wrap[hidden] { display: none; }
+    .converter-state {
+      font-size: 0.78rem; color: var(--muted); white-space: nowrap;
+      padding: 0.2rem 0.55rem; background: var(--surface2);
+      border: 1px solid var(--border); border-radius: 5px; cursor: default;
+    }
+    .converter-state.paused { color: var(--amber); border-color: #78350f; }
+    .converter-state.error  { color: #fca5a5; border-color: #7f1d1d; }
+    .btn.converter-btn { font-size: 0.78rem; padding: 0.3rem 0.65rem; }
+
     /* ── Search Bar ── */
     .search-bar {
       display: none; align-items: center; gap: 0.5rem;
@@ -323,6 +337,63 @@
       padding: 0.6rem 1rem; display: flex; gap: 0.6rem; align-items: flex-end;
     }
     .live-panel-inner { flex: 1; display: flex; flex-direction: column; gap: 0.35rem; }
+
+    /* ── Script load failure banner ── */
+    .load-error-bar {
+      display: none; align-items: flex-start; gap: 0.75rem;
+      background: #4a1212; border-bottom: 2px solid var(--red);
+      color: #fecaca; padding: 0.7rem 1rem; font-size: 0.85rem;
+      line-height: 1.4; flex-shrink: 0;
+    }
+    .load-error-dismiss {
+      margin-left: auto; background: none; border: none; color: #fecaca;
+      font-size: 1rem; cursor: pointer; padding: 0 0.25rem; flex-shrink: 0;
+    }
+    .load-error-dismiss:hover { color: #fff; }
+
+    /* ── Quick-send preset bar ── */
+    .preset-bar {
+      display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center;
+    }
+    .preset-btn {
+      font-size: 0.72rem; padding: 0.25rem 0.6rem;
+      background: var(--surface2); color: var(--text);
+      border: 1px solid var(--border2); border-radius: 4px;
+      cursor: pointer; font-family: inherit; white-space: nowrap;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+    }
+    .preset-btn:hover { background: var(--border); }
+
+    /* Emergency presets read as dangerous at a glance, but behave exactly
+       like the others — arm, then confirm. The colour is a cue, not a
+       different interaction to remember under pressure. */
+    .preset-btn.emergency {
+      border-color: #7f1d1d; color: #fca5a5; background: #2a1212;
+    }
+    .preset-btn.emergency:hover { background: #3a1818; }
+
+    /* Armed = one click in. The next click on this same button sends. */
+    .preset-btn.armed {
+      background: var(--amber); color: #1a1a1a; border-color: var(--amber);
+      font-weight: 600;
+    }
+    .preset-btn.emergency.armed {
+      background: var(--red); color: #fff; border-color: var(--red);
+      animation: presetPulse 0.9s ease-in-out infinite;
+    }
+    @keyframes presetPulse {
+      0%, 100% { opacity: 1; }
+      50%      { opacity: 0.65; }
+    }
+
+    .preset-add-btn {
+      font-size: 0.72rem; padding: 0.25rem 0.5rem;
+      background: none; color: var(--muted);
+      border: 1px dashed var(--border2); border-radius: 4px;
+      cursor: pointer; font-family: inherit;
+    }
+    .preset-add-btn:hover { color: var(--text); border-color: var(--text); }
+    .preset-btn.custom { border-style: dashed; }
     .live-label { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); display: flex; align-items: center; gap: 0.4rem; user-select: none; }
     .live-indicator { width: 7px; height: 7px; border-radius: 50%; background: #ef4444; transition: background 0.2s; }
     .live-indicator.active { background: var(--amber); animation: livepulse 1s infinite; }
@@ -399,19 +470,28 @@
       </select>
     </div>
     <div class="text-settings-sample" id="ctrlFontSample">[red]MARLIN:[/] Sample script text</div>
-    <button class="btn btn-secondary" style="width:100%;margin-top:0.5rem" onclick="resetTextSettings()">Reset to Default</button>
+    <button class="btn secondary" style="width:100%;margin-top:0.5rem" onclick="resetTextSettings()">Reset to Default</button>
   </div>
 </header>
 
 <div class="toolbar">
   <button class="btn" id="loadBtn" onclick="document.getElementById('fileInput').click()">📂 Load File</button>
   <input type="file" id="fileInput" accept=".txt,.srt,.vtt,.csv,text/*" />
+  <!-- Load straight from the server's Scripts folder (shown when it has one) -->
+  <button class="btn secondary" id="scriptsLoadBtn" onclick="loadFromScripts()" hidden
+          title="Load a caption file from the Scripts folder">📁 Scripts</button>
   <button class="btn secondary" id="prevBtn" onclick="navigate(-1)" disabled>▲ Prev</button>
   <button class="btn secondary" id="nextBtn" onclick="navigate(1)" disabled>▼ Next</button>
   <button class="btn intermission-btn" id="intermissionBtn" onclick="toggleIntermission()" disabled>⏸ Intermission</button>
   <button class="btn secondary" id="searchToggleBtn" onclick="toggleSearch()" disabled title="Search lines (Ctrl+F)">🔍 Search</button>
   <button class="btn secondary" id="jumpToggleBtn" onclick="toggleJump()" disabled title="Jump to a line number (Ctrl+G)">🔢 Go to Line</button>
   <span class="counter" id="counter"></span>
+  <!-- Script Converter: shown only while it has unfinished work or is paused.
+       See the 'converter-status' handler below. -->
+  <span class="converter-wrap" id="converterWrap" hidden>
+    <span class="converter-state" id="converterState" aria-live="polite"></span>
+    <button class="btn secondary converter-btn" id="converterBtn" onclick="pressConverterButton()"></button>
+  </span>
 </div>
 
 <div class="search-bar" id="searchBar">
@@ -457,6 +537,9 @@
       Live Type — broadcasts to readers as you type
     </div>
     <div class="live-preview" id="livePreview">Preview will appear here as you type…</div>
+    <!-- Quick-send presets. Populated from CAPTION_PRESETS in global.js
+         (shared by all operators) plus any per-device extras saved locally. -->
+    <div class="preset-bar" id="presetBar"></div>
     <textarea id="liveInput" rows="1" placeholder="Type here to send a live caption override…"></textarea>
   </div>
   <button class="btn clear-btn" id="clearBtn" onclick="clearLive()">✕ Clear</button>
@@ -580,6 +663,7 @@
       // tooltip) rather than showing broken/stale info.
     });
 </script>
+<script src="./scripts-picker.js"></script>
 <script src="/socket.io/socket.io.js"></script>
 <script>
 
@@ -604,6 +688,28 @@
 
   socket.on('connect',    () => setStatus(true));
   socket.on('disconnect', () => setStatus(false));
+
+  // The server now refuses controller sockets without a valid session. That's
+  // almost always an expired login (sessions last 12 hours), and it needs to
+  // be unmistakable: without a socket the page still LOOKS usable — buttons
+  // respond, the line highlight moves — but nothing reaches the audience.
+  socket.on('connect_error', (err) => {
+    setStatus(false);
+    if (err && err.message === 'AUTH_REQUIRED') {
+      socket.close();   // stop retrying; reconnecting can't fix an expired session
+      showLoadError('Your session has expired, so this controller is no longer '
+        + 'connected to the server. Nothing you do here is reaching the audience. '
+        + 'Sign in again to reconnect.');
+      const bar = document.getElementById('loadErrorBar');
+      if (bar) {
+        const link = document.createElement('a');
+        link.href = '/login';
+        link.textContent = 'Sign in again';
+        link.style.cssText = 'color:#fff;font-weight:600;text-decoration:underline;margin-left:0.5rem';
+        bar.insertBefore(link, bar.lastChild);
+      }
+    }
+  });
 
   socket.on('state-update', (data) => {
     // Full script sync from another controller tab (e.g. after file load)
@@ -655,6 +761,91 @@
     if (el && typeof data.count === 'number') el.textContent = data.count;
   });
 
+  // ── Script Converter ─────────────────────────────────────────────────────────
+  // The converter on this Pi never works while a controller is open, and
+  // starts again 30 minutes after everyone has left WordLight. The button is
+  // for the gap between two shows: "Pause 6 hours" keeps it from starting.
+  // The server pushes 'converter-status' while this page is open; the button
+  // is shown only while the converter has unfinished work, or is paused.
+  let converterStatus = { available: false };
+  let converterMessageTimer = null;
+
+  socket.on('converter-status', (data) => {
+    converterStatus = data || { available: false };
+    renderConverter();
+  });
+  socket.on('disconnect', () => {
+    converterStatus = { available: false };   // stale until the server answers again
+    renderConverter();
+  });
+
+  // "9:30 PM", or "Tue 3:15 AM" when it isn't today
+  function converterClock(epochSeconds) {
+    const d = new Date(epochSeconds * 1000);
+    let s = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    if (d.toDateString() !== new Date().toDateString()) {
+      s = d.toLocaleDateString([], { weekday: 'short' }) + ' ' + s;
+    }
+    return s;
+  }
+
+  function converterPaused() {
+    const s = converterStatus;
+    return !!(s.available && s.pausedUntil && s.pausedUntil * 1000 > Date.now());
+  }
+
+  function renderConverter() {
+    if (converterMessageTimer) return;   // a short message is showing; drawn after it
+    const s      = converterStatus;
+    const wrap   = document.getElementById('converterWrap');
+    const state  = document.getElementById('converterState');
+    const btn    = document.getElementById('converterBtn');
+    const paused = converterPaused();
+    if (!s.available || !(s.unfinished || paused)) { wrap.hidden = true; return; }
+    wrap.hidden = false;
+    state.className = 'converter-state' + (paused ? ' paused' : '');
+    if (paused) {
+      state.textContent = '📄 Converter paused until ' + converterClock(s.pausedUntil);
+      btn.textContent   = '▶ Resume';
+      btn.title = 'End the pause now. The converter still waits while anyone is '
+        + 'connected to WordLight.';
+    } else {
+      state.textContent = s.working ? '📄 Converter working' : '📄 Converter waiting';
+      btn.textContent   = '⏸ Pause 6 hours';
+      btn.title = 'Keep the Script Converter from starting for the next 6 hours, '
+        + 'e.g. between two shows. Pressing again starts the 6 hours again.';
+    }
+    state.title = 'Script Converter' + (s.unfinished ? ' (a script is not finished yet)' : '')
+      + (s.why ? ': ' + s.why : '');
+  }
+
+  function showConverterMessage(text) {
+    const state = document.getElementById('converterState');
+    clearTimeout(converterMessageTimer);
+    state.className   = 'converter-state error';
+    state.textContent = '📄 ' + text;
+    converterMessageTimer = setTimeout(() => {
+      converterMessageTimer = null;
+      renderConverter();
+    }, 5000);
+  }
+
+  function pressConverterButton() {
+    const btn = document.getElementById('converterBtn');
+    btn.blur();           // so Space keeps meaning "next line", not this button
+    btn.disabled = true;
+    const event = converterPaused() ? 'converter-resume' : 'converter-pause';
+    socket.timeout(6000).emit(event, {}, (err, result) => {
+      btn.disabled = false;
+      if (err || !result || !result.ok) {
+        showConverterMessage((result && result.error) || 'The Script Converter did not answer.');
+        return;
+      }
+      converterStatus = result.status;
+      renderConverter();
+    });
+  }
+
   socket.on('index-update', (data) => {
     if (typeof data.currentIndex !== 'number') return;
     if (data.currentIndex === currentIndex) return;
@@ -673,37 +864,63 @@
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (ev) => {
-      const rawLines = ev.target.result
-        .split(/\r?\n/)
-        .map(l => l.trim())
-        .filter(l => l.length > 0);
-
-      // Split each raw line on the first '|' only
-      // Left side → caption (sent to readers)
-      // Right side → note  (shown only on controller)
-      lines = [];
-      notes = [];
-      for (const raw of rawLines) {
-        const pipePos = raw.indexOf('|');
-        if (pipePos === -1) {
-          lines.push(raw);
-          notes.push('');
-        } else {
-          lines.push(raw.slice(0, pipePos).trim());
-          notes.push(raw.slice(pipePos + 1).trim());
-        }
-      }
-
-      currentIndex = lines.length > 0 ? 0 : -1;
-      closeSearch();
-      closeJump();   // its line-range hint would be stale for the new script
-      renderList();
-      loadScript();
-    };
+    reader.onload = (ev) => loadScriptText(ev.target.result);
     reader.readAsText(file);
     e.target.value = '';
   });
+
+  // ── Load from the Scripts folder ─────────────────────────────────────────────
+  // The same as Load File, but the file comes from the server's Scripts folder
+  // (see scripts-picker.js), so the laptop needs no copy and no network share.
+  ScriptsPicker.status().then((st) => {
+    if (!st.available) return;
+    const btn = document.getElementById('scriptsLoadBtn');
+    btn.textContent = '📁 ' + st.name;
+    btn.title = 'Load a caption file from ' + st.name;
+    btn.dataset.label = st.name;
+    btn.hidden = false;
+  });
+
+  let scriptsFolderLast = '';
+  async function loadFromScripts() {
+    const btn = document.getElementById('scriptsLoadBtn');
+    btn.blur();                       // Space must keep meaning "next line"
+    const file = await ScriptsPicker.open({ mode: 'open', label: btn.dataset.label,
+                                            folder: scriptsFolderLast });
+    if (!file) return;
+    scriptsFolderLast = file.folder;
+    loadScriptText(file.text);
+  }
+
+  // Shared by Load File and the Scripts folder: show the script and send it.
+  function loadScriptText(text) {
+    const rawLines = text
+      .split(/\r?\n/)
+      .map(l => l.trim())
+      .filter(l => l.length > 0);
+
+    // Split each raw line on the first '|' only
+    // Left side → caption (sent to readers)
+    // Right side → note  (shown only on controller)
+    lines = [];
+    notes = [];
+    for (const raw of rawLines) {
+      const pipePos = raw.indexOf('|');
+      if (pipePos === -1) {
+        lines.push(raw);
+        notes.push('');
+      } else {
+        lines.push(raw.slice(0, pipePos).trim());
+        notes.push(raw.slice(pipePos + 1).trim());
+      }
+    }
+
+    currentIndex = lines.length > 0 ? 0 : -1;
+    closeSearch();
+    closeJump();   // its line-range hint would be stale for the new script
+    renderList();
+    loadScript();
+  }
 
   // ── Navigation ────────────────────────────────────────────────────────────────
   function navigate(delta) {
@@ -868,11 +1085,70 @@
   // Called once when a file is loaded. Sends raw lines (caption|note) so the
   // server can relay notes to other controller tabs and backstage.
   // Notes are stripped client-side by reader.html; backstage.html displays them.
+  // Sends the script to the server and WAITS for confirmation.
+  //
+  // This used to be a fire-and-forget emit, which hid a dangerous failure:
+  // if the payload was rejected (too large for the socket buffer, or now
+  // failing validation), the controller happily showed the new script while
+  // every reader still had the old one. The operator would advance lines in
+  // front of an audience reading something completely different, with
+  // nothing on either screen to indicate a problem.
+  //
+  // Now the server acknowledges every load, and anything other than success
+  // is shown to the operator immediately.
   function loadScript() {
     const rawLines = lines.map((caption, i) =>
       notes[i] ? caption + '|' + notes[i] : caption
     );
-    socket.emit('load-script', { lines: rawLines, currentIndex });
+
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      showLoadError('The server did not confirm the script within 10 seconds. '
+        + 'Readers may still be showing the previous script. Check the '
+        + 'connection indicator and try loading again.');
+    }, 10000);
+
+    socket.emit('load-script', { lines: rawLines, currentIndex }, (result) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (!result || !result.ok) {
+        showLoadError((result && result.error) || 'The server rejected the script.');
+      } else {
+        clearLoadError();
+      }
+    });
+  }
+
+  // Load failures need to be impossible to miss — a quietly-styled message
+  // wouldn't get noticed during a show.
+  function showLoadError(message) {
+    let bar = document.getElementById('loadErrorBar');
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'loadErrorBar';
+      bar.className = 'load-error-bar';
+      const tb = document.querySelector('.toolbar');
+      tb.parentNode.insertBefore(bar, tb.nextSibling);
+    }
+    bar.innerHTML = '';
+    const text = document.createElement('span');
+    text.textContent = '⚠️ Script not loaded on the server — readers are NOT '
+      + 'showing this script. ' + message;
+    const dismiss = document.createElement('button');
+    dismiss.className = 'load-error-dismiss';
+    dismiss.textContent = '✕';
+    dismiss.onclick = clearLoadError;
+    bar.appendChild(text);
+    bar.appendChild(dismiss);
+    bar.style.display = 'flex';
+  }
+
+  function clearLoadError() {
+    const bar = document.getElementById('loadErrorBar');
+    if (bar) bar.style.display = 'none';
   }
 
   // Called on every navigation — sends only the new index. The server already
@@ -1164,6 +1440,138 @@
     socket.emit('update-live-text', { liveText: '' });
     liveInput.focus();
   }
+
+  // ── Quick-send presets ────────────────────────────────────────────────────
+  //
+  // Two sources, combined: CAPTION_PRESETS from global.js (shared by every
+  // operator, versioned in git) and a per-device list in localStorage. The
+  // shared ones can't be edited or deleted here on purpose — emergency
+  // wording should be identical in every booth, and changing it should be a
+  // deliberate edit to global.js, not something one operator does locally.
+  //
+  // ARM-THEN-SEND: live type broadcasts on every keystroke, so filling the
+  // box IS publishing to every audience phone. A single click therefore only
+  // arms a preset; a second click on the same button sends it. A misclick
+  // costs nothing, but a real send is still two fast clicks in the same spot.
+  const CUSTOM_PRESETS_KEY = 'customCaptionPresets';
+  const PRESET_ARM_TIMEOUT = 6000;   // ms before an armed preset gives up
+
+  const presetBar = document.getElementById('presetBar');
+  let armedPresetIndex = null;
+  let armedPresetTimer = null;
+
+  function loadCustomPresets() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(CUSTOM_PRESETS_KEY) || '[]');
+      return Array.isArray(raw) ? raw.filter(p => p && p.label && p.text) : [];
+    } catch (e) {
+      return [];   // corrupt entry — ignore rather than break the whole bar
+    }
+  }
+
+  function saveCustomPresets(list) {
+    try { localStorage.setItem(CUSTOM_PRESETS_KEY, JSON.stringify(list)); }
+    catch (e) { /* storage full or blocked — presets just won't persist */ }
+  }
+
+  function allPresets() {
+    const shared = (typeof CAPTION_PRESETS !== 'undefined' ? CAPTION_PRESETS : [])
+      .map(p => ({ ...p, custom: false }));
+    const custom = loadCustomPresets().map(p => ({ ...p, custom: true }));
+    // Emergency presets first — under stress you shouldn't have to hunt.
+    const emergency = shared.filter(p => p.emergency);
+    const routine   = shared.filter(p => !p.emergency);
+    return [...emergency, ...routine, ...custom];
+  }
+
+  function disarmPreset() {
+    armedPresetIndex = null;
+    clearTimeout(armedPresetTimer);
+    renderPresets();
+  }
+
+  function sendPreset(preset) {
+    liveInput.value = preset.text;
+    applyLiveTextUI(preset.text);
+    socket.emit('update-live-text', { liveText: preset.text });
+    disarmPreset();
+  }
+
+  function handlePresetClick(index) {
+    const presets = allPresets();
+    const preset  = presets[index];
+    if (!preset) return;
+
+    if (armedPresetIndex === index) {
+      sendPreset(preset);          // second click — go
+    } else {
+      armedPresetIndex = index;    // first click — arm only, nothing broadcast
+      clearTimeout(armedPresetTimer);
+      armedPresetTimer = setTimeout(disarmPreset, PRESET_ARM_TIMEOUT);
+      renderPresets();
+    }
+  }
+
+  function addCustomPreset() {
+    const label = prompt('Button label (short):');
+    if (!label || !label.trim()) return;
+    const text = prompt('Caption text to send:');
+    if (!text || !text.trim()) return;
+    const list = loadCustomPresets();
+    list.push({ label: label.trim(), text: text.trim() });
+    saveCustomPresets(list);
+    renderPresets();
+  }
+
+  function removeCustomPreset(label) {
+    const list = loadCustomPresets().filter(p => p.label !== label);
+    saveCustomPresets(list);
+    disarmPreset();
+  }
+
+  function renderPresets() {
+    if (!presetBar) return;
+    presetBar.innerHTML = '';
+    const presets = allPresets();
+
+    presets.forEach((p, i) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'preset-btn'
+        + (p.emergency ? ' emergency' : '')
+        + (p.custom ? ' custom' : '')
+        + (armedPresetIndex === i ? ' armed' : '');
+      btn.textContent = armedPresetIndex === i ? `Send "${p.label}"?` : p.label;
+      btn.title = armedPresetIndex === i
+        ? 'Click again to broadcast — or press Escape to cancel'
+        : p.text + (p.custom ? '\n\n(Alt-click to remove this custom preset)' : '');
+
+      btn.addEventListener('click', (e) => {
+        if (p.custom && e.altKey) { removeCustomPreset(p.label); return; }
+        handlePresetClick(i);
+      });
+      presetBar.appendChild(btn);
+    });
+
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'preset-add-btn';
+    addBtn.textContent = '+ Add';
+    addBtn.title = 'Add a preset saved only on this device';
+    addBtn.addEventListener('click', addCustomPreset);
+    presetBar.appendChild(addBtn);
+  }
+
+  renderPresets();
+
+  // Escape cancels an armed preset. Checked before the existing Escape
+  // handling so cancelling an arm doesn't also clear the live text.
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && armedPresetIndex !== null) {
+      e.stopPropagation();
+      disarmPreset();
+    }
+  }, true);
 
   liveInput.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') { clearLive(); liveInput.blur(); }

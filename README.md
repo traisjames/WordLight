@@ -22,7 +22,7 @@ below); nothing in this project is tied to any specific venue.
 | `/preferences` | Reader display settings (font, size, colors) | No |
 | `/help` | Script conventions, keyboard shortcuts, OSC commands | No |
 | `/controller` | Load script, navigate lines, live type, intermission | ✅ Yes |
-| `/editor` | Caption script editor | ✅ Yes |
+| `/editor` | Caption script editor | ✅ Admin or editor login |
 | `/logging` | Unique reader usage stats | ✅ Yes |
 | `/login` | Admin sign-in | — |
 
@@ -36,6 +36,9 @@ below); nothing in this project is tied to any specific venue.
 | `/api/log` | Reader session statistics | ✅ Yes |
 | `/api/log/export` | Download session log as CSV | ✅ Yes |
 | `/api/log/reset` | Clear session counters | ✅ Yes |
+| `/api/scripts` | List a folder in the Scripts folder (`?folder=Season 26`) | ✅ Admin or editor login |
+| `/api/scripts/file` | Open (`GET ?path=…`) or save (`POST ?folder=…&name=…&base=…`, text body) a caption file | ✅ Admin or editor login |
+| `/api/connections` | `{controllers, readers, backstage}` connected now — for the Script Converter on the same Pi; also answered on the plain-http `PORT` | Pi itself only |
 
 ---
 
@@ -377,12 +380,13 @@ benefit of log rotation from step 1 above.
 ### Controller (Presenter)
 
 1. Open `https://<pi-ip>:3443/controller` and log in.
-2. Click **Load File** and choose a `.txt` script file.
+2. Click **Load File** and choose a `.txt` script file, or **📁 Scripts** to load one straight from the Scripts folder on the Pi.
 3. Navigate with arrow keys, Space, Home/End, or click any line.
 4. **`I`** — toggle the intermission overlay on all reader screens.
 5. **`N`** — edit the speaker note for the current line.
 6. **`/`** or **Ctrl+F** — search the script.
 7. **Live type panel** — type a one-off caption that overrides the script instantly. The controller background turns dark orange as a reminder that live text is active.
+8. **📄 Converter waiting / ⏸ Pause 6 hours** — appears at the right of the toolbar only when the Script Converter on the same Pi has a script it hasn't finished (see [Script Converter](#script-converter-optional) below).
 
 ### Backstage (`/backstage`)
 
@@ -403,6 +407,31 @@ A line-by-line script editor with:
 - Live reader preview pane (drag the divider to resize)
 - Collapsible script conventions reference panel
 - Download as `.txt` (`Ctrl+S`)
+- **📁 Scripts** opens a caption file from the Scripts folder on the Pi, and **💾 Save to Scripts** saves it there (`Ctrl+S` saves back to where it came from). No network share and no copy on the laptop needed.
+
+### Scripts folder and the editor login
+
+The editor and the controller open caption files straight from the Scripts
+folder (`/home/wordlight/Scripts`, the "CC Storage" share), and the editor
+saves to it:
+
+- Saving never writes over someone else's work. If the file was changed
+  after you opened it (over the share, or in another editor), or a
+  different file already has that name, yours is saved as
+  "Name (2).txt" and the editor says so. The Script Converter's save to
+  this folder follows the same rule.
+- New files can be changed by everyone who can write to the share (they
+  get the share's group and its 0664 mode).
+- Only `.txt` files are shown; hidden files and anything outside the folder
+  are never reachable.
+
+**Editor login:** set `EDITOR_PASSWORD` (and optionally `EDITOR_USERNAME`,
+default `editor`) in `.env` to give script volunteers their own login. It
+opens the editor and the Scripts folder only; the controller and logging
+still need the admin login, which also opens the editor. Without
+`EDITOR_PASSWORD`, the editor needs the admin login. `SCRIPTS_DIR` and
+`SCRIPTS_NAME` change the folder and what the buttons call it, e.g.
+`SCRIPTS_NAME=CC Storage` to match the share's name (see `env.example`).
 
 ### Logging (Admin)
 
@@ -511,6 +540,42 @@ All addresses are **case-insensitive**. Line numbers are **1-based** matching th
 
 ---
 
+## Script Converter (optional)
+
+The Script Converter (a separate Python program) turns a show script PDF
+or Word file into a WordLight caption file. When it runs on the same Pi,
+reading a scanned script can use the whole Pi for an hour or more, so it
+keeps its work away from shows by asking WordLight who is connected:
+
+- WordLight answers `GET /api/connections` with
+  `{"controllers": 1, "readers": 12, "backstage": 2}`, to requests from the
+  Pi itself only. Readers counts audience phones; backstage counts the
+  backstage and teleprompter screens. The home, logging and editor pages
+  aren't counted. A closed page drops out at once; a phone that went to
+  sleep drops out within about 45 seconds (socket.io's heartbeat).
+- It is answered on the plain-http `PORT` (3000) as well as the HTTPS
+  port, so the converter's default address,
+  `http://127.0.0.1:3000/api/connections`, works with no redirect.
+- The converter then never works while a controller is open, and during
+  the day only once nobody has been connected for 30 minutes.
+
+While the converter has unfinished work, the controller toolbar shows
+**📄 Converter waiting** with a **⏸ Pause 6 hours** button. Pressing it
+keeps the converter from starting for 6 hours, e.g. between a matinee and
+an evening show (pressing again starts the 6 hours again). While paused it
+shows **📄 Converter paused until …** and **▶ Resume**. Hovering over the
+text shows what the converter is waiting for. Readers and backstage
+screens never see any of this.
+
+WordLight asks the converter only while a controller page is open (every 5
+seconds, from the Pi to itself). If the converter isn't installed or isn't
+running, nothing appears. Settings: `CONVERTER_URL` in `.env` (see
+`env.example`) — default `http://127.0.0.1:8090`; WordLight switches to
+https by itself if the converter runs with a certificate; `off` turns the
+button off.
+
+---
+
 ## Network Notes
 
 - All devices must be on the **same Wi-Fi network** as the Pi.
@@ -536,6 +601,7 @@ All addresses are **case-insensitive**. Line numbers are **1-based** matching th
 | Server crashes on start | Run `npm install` again; check Node version ≥ 22 (`node --version`) |
 | QR code doesn't appear | Run `npm install` — the `qrcode` package may be missing |
 | OSC commands not working | Check UDP port `3001` isn't blocked; verify the Pi IP |
+| Script Converter's pause button never appears | It only appears while the converter has unfinished work. Check the converter is running on the same Pi (`pm2 list`) and that `CONVERTER_URL` in `.env` isn't `off` or another computer's address |
 
 ---
 

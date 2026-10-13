@@ -47,6 +47,7 @@
       white-space: nowrap; transition: background 0.15s, opacity 0.15s;
     }
     .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    a.btn { text-decoration: none; }
     .btn-primary  { background: var(--accent); color: #fff; }
     .btn-primary:hover:not(:disabled) { background: var(--accent-h); }
     .btn-secondary { background: var(--border); color: var(--text); }
@@ -102,6 +103,25 @@
     code.tag-ex {
       background: var(--surface); border: 1px solid var(--border);
       border-radius: 3px; padding: 0.05rem 0.35rem; font-size: 0.68rem;
+    }
+
+    /* ── Find & Replace: regex extras ── */
+    .fnr-preset {
+      background: var(--bg); color: var(--text);
+      border: 1px solid var(--border); border-radius: 5px;
+      padding: 0.28rem 0.4rem; font-size: 0.76rem;
+      max-width: 13rem; min-width: 0;
+    }
+    .fnr-error {
+      display: none; background: #4a1212; color: #fca5a5;
+      border-bottom: 1px solid var(--red);
+      padding: 0.4rem 1rem; font-size: 0.78rem;
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+    }
+    .fnr-error.visible { display: block; }
+    .fnr-input.regex-mode {
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+      border-color: var(--accent);
     }
 
     /* ── Find & Replace bar ──────────────────────────────────────────────────── */
@@ -371,6 +391,20 @@
     .modal p  { font-size: 0.84rem; color: var(--muted); margin-bottom: 1.1rem; line-height: 1.5; }
     .modal-btns { display: flex; gap: 0.6rem; }
     .modal-btns button { flex: 1; }
+
+    /* ── Scripts folder notice (a save that went to another name, an error) ── */
+    .scripts-notice {
+      display: none; align-items: flex-start; gap: 0.75rem; flex-shrink: 0;
+      padding: 0.6rem 1rem; font-size: 0.84rem; line-height: 1.45;
+      background: #2a1f05; color: #fde68a; border-bottom: 1px solid #78350f;
+    }
+    .scripts-notice.show { display: flex; }
+    .scripts-notice.error { background: #4a1212; color: #fecaca; border-bottom-color: #7f1d1d; }
+    .scripts-notice span { flex: 1; }
+    .scripts-notice button {
+      background: none; border: none; color: inherit; cursor: pointer;
+      font-size: 1rem; padding: 0 0.25rem; flex-shrink: 0;
+    }
   </style>
 </head>
 <body>
@@ -384,13 +418,25 @@
   <button class="btn btn-secondary" onclick="document.getElementById('fileInput').click()">📂 Open</button>
   <input type="file" id="fileInput" accept=".txt,text/*" />
 
+  <!-- Scripts folder (shown when the server has one): open from it / save to it -->
+  <button class="btn btn-secondary" id="scriptsOpenBtn" onclick="openFromScripts()" hidden
+          title="Open a caption file from the Scripts folder">📁 Scripts</button>
+
   <button class="btn btn-secondary" onclick="newFile()">🗋 New</button>
+  <button class="btn btn-primary"   id="scriptsSaveBtn" onclick="saveToScripts()" hidden disabled
+          title="Save to the Scripts folder (Ctrl+S when the file came from there)">💾 Save to Scripts</button>
   <button class="btn btn-primary"   id="downloadBtn" onclick="downloadFile()" disabled>⬇ Download</button>
 
   <div style="width:1px;height:1.2rem;background:var(--border);margin:0 0.2rem"></div>
 
-  <a class="btn btn-ghost" href="/controller">🎙 Controller</a>
+  <a class="btn btn-ghost" id="controllerLink" href="/controller" hidden>🎙 Controller</a>
+  <a class="btn btn-ghost" href="/logout">Sign out</a>
 </header>
+
+<div class="scripts-notice" id="scriptsNotice" role="status">
+  <span id="scriptsNoticeText"></span>
+  <button onclick="hideScriptsNotice()" title="Dismiss">✕</button>
+</div>
 
 <!-- ── Toolbar ─────────────────────────────────────────────────────────────── -->
 <div class="toolbar">
@@ -450,8 +496,16 @@
   <label style="font-size:0.78rem;color:var(--muted);display:flex;align-items:center;gap:0.3rem;cursor:pointer">
     <input type="checkbox" id="fnrCase" /> Case sensitive
   </label>
+  <label style="font-size:0.78rem;color:var(--muted);display:flex;align-items:center;gap:0.3rem;cursor:pointer"
+         title="Treat the Find box as a regular expression. Patterns apply to one line at a time, so ^ and $ mean start and end of a line.">
+    <input type="checkbox" id="fnrRegex" /> <code style="font-size:0.75rem">.*</code> Regex
+  </label>
+  <select id="fnrPreset" class="fnr-preset" title="Saved patterns from global.js">
+    <option value="">Saved patterns…</option>
+  </select>
   <button class="fnr-close" onclick="closeFnr()" title="Close (Esc)">✕</button>
 </div>
+<div class="fnr-error" id="fnrError"></div>
 
 <!-- ── Main ────────────────────────────────────────────────────────────────── -->
 <div class="main">
@@ -545,6 +599,7 @@
 </div>
 
 <script src="./global.js"></script>
+<script src="./scripts-picker.js"></script>
 <script>
 
 // ── State ─────────────────────────────────────────────────────────────────────
@@ -554,6 +609,11 @@ let focusedIndex = -1;          // which line input is currently focused
 let lastInputEl  = null;        // the actual <input> element that last had focus
 let fileName     = 'untitled.txt';
 let unsaved      = false;
+// Where the file came from in the Scripts folder ({folder, name, sha}), or
+// null for a file from this computer or a new one. sha is the version that
+// was opened, so a save never writes over someone else's newer version.
+let scriptsSource = null;
+let scriptsLabel  = 'Scripts';
 
 
 // ── Find & Replace state ──────────────────────────────────────────────────────
@@ -570,6 +630,8 @@ document.getElementById('fileInput').addEventListener('change', (e) => {
   const reader = new FileReader();
   reader.onload = (ev) => {
     loadText(ev.target.result, file.name);
+    scriptsSource = null;
+    updateFileName();
   };
   reader.readAsText(file);
   e.target.value = '';
@@ -601,6 +663,7 @@ function newFile() {
 function doNew() {
   lines = [''];
   fileName = 'untitled.txt';
+  scriptsSource = null;
   focusedIndex = -1;
   lastInputEl  = null;
   renderAll();
@@ -626,12 +689,14 @@ function renderAll() {
     addRow.style.display = 'none';
     document.getElementById('lineCount').textContent = '0 lines';
     document.getElementById('downloadBtn').disabled  = true;
+    document.getElementById('scriptsSaveBtn').disabled = true;
     return;
   }
 
   empty.style.display  = 'none';
   addRow.style.display = 'block';
   document.getElementById('downloadBtn').disabled = false;
+  document.getElementById('scriptsSaveBtn').disabled = false;
 
   list.innerHTML = '';
   lines.forEach((_, i) => list.appendChild(buildRow(i)));
@@ -930,6 +995,9 @@ const fnrNextBtn    = document.getElementById('fnrNext');
 const fnrReplBtn    = document.getElementById('fnrReplaceBtn');
 const fnrReplAllBtn = document.getElementById('fnrReplaceAllBtn');
 const fnrCaseChk    = document.getElementById('fnrCase');
+const fnrRegexChk   = document.getElementById('fnrRegex');
+const fnrPresetSel  = document.getElementById('fnrPreset');
+const fnrErrorEl    = document.getElementById('fnrError');
 
 function openFnr() {
   fnrVisible = true;
@@ -954,6 +1022,45 @@ function toggleFnr() { fnrVisible ? closeFnr() : openFnr(); }
 
 fnrFindInput.addEventListener('input',  () => { fnrCursor = 0; runFnr(); });
 fnrCaseChk.addEventListener('change',   () => { fnrCursor = 0; runFnr(); });
+fnrRegexChk.addEventListener('change',  () => {
+  fnrCursor = 0;
+  fnrFindInput.classList.toggle('regex-mode', fnrRegexChk.checked);
+  fnrReplInput.classList.toggle('regex-mode', fnrRegexChk.checked);
+  fnrFindInput.placeholder = fnrRegexChk.checked
+    ? 'Regular expression\u2026'
+    : 'Search text\u2026';
+  fnrReplInput.placeholder = fnrRegexChk.checked
+    ? 'Replace with\u2026  ($1 or \\1 for groups)'
+    : 'Replace with\u2026';
+  if (!fnrRegexChk.checked) clearFnrError();
+  runFnr();
+});
+
+// Populate the saved-pattern list from REGEX_PRESETS in global.js.
+(function initFnrPresets() {
+  if (typeof REGEX_PRESETS === 'undefined' || !Array.isArray(REGEX_PRESETS)) return;
+  REGEX_PRESETS.forEach((p, i) => {
+    const opt = document.createElement('option');
+    opt.value = String(i);
+    opt.textContent = p.label;
+    if (p.note) opt.title = p.note;
+    fnrPresetSel.appendChild(opt);
+  });
+  fnrPresetSel.addEventListener('change', () => {
+    const p = REGEX_PRESETS[parseInt(fnrPresetSel.value, 10)];
+    if (!p) return;
+    // A saved pattern is always a regex, so switch the mode on rather than
+    // leaving it to be searched for literally.
+    fnrRegexChk.checked = true;
+    fnrRegexChk.dispatchEvent(new Event('change'));
+    fnrFindInput.value = p.find;
+    fnrReplInput.value = p.replace;
+    fnrCursor = 0;
+    runFnr();
+    if (p.note) toast(p.note);
+    fnrPresetSel.value = '';   // reset so the same entry can be picked again
+  });
+})();
 
 fnrFindInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') { e.preventDefault(); fnrStep(e.shiftKey ? -1 : 1); }
@@ -964,6 +1071,46 @@ fnrReplInput.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') closeFnr();
   e.stopPropagation();
 });
+
+
+// ── Regex support ─────────────────────────────────────────────────────────
+//
+// Patterns run against ONE LINE AT A TIME, because the editor keeps the
+// script as an array of lines. That's why ^ and $ mean start and end of a
+// line without needing the m flag — and why a pattern can't span lines.
+
+function showFnrError(msg) {
+  fnrErrorEl.textContent = '⚠ ' + msg;
+  fnrErrorEl.classList.add('visible');
+  fnrCountEl.textContent = '';
+  fnrPrevBtn.disabled = fnrNextBtn.disabled = fnrReplBtn.disabled = fnrReplAllBtn.disabled = true;
+}
+function clearFnrError() {
+  fnrErrorEl.textContent = '';
+  fnrErrorEl.classList.remove('visible');
+}
+
+// Builds the search regex. Throws on an invalid pattern — callers catch it
+// and show the message rather than letting it break the page.
+function buildFnrRegex(global) {
+  const query = fnrFindInput.value;
+  const flags = (global === false ? '' : 'g') + (fnrCaseChk.checked ? '' : 'i');
+  if (fnrRegexChk.checked) return new RegExp(query, flags);
+  return new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), flags);
+}
+
+// JavaScript writes backreferences as $1; sed, Perl and most tutorials use
+// \1, which is what people actually type. Accept both by rewriting \1–\9
+// into $1–$9. A literal backslash-digit is vanishingly rare in a caption,
+// and \$1 still escapes to a literal if anyone needs it.
+//
+// In plain (non-regex) mode the replacement must be taken literally, so a
+// bare $ is doubled — otherwise "$&" and friends would expand silently.
+function fnrReplacement() {
+  const raw = fnrReplInput.value;
+  if (!fnrRegexChk.checked) return raw.replace(/\$/g, '$$$$');
+  return raw.replace(/\\(\d)/g, '$$$1');
+}
 
 function runFnr() {
   const query = fnrFindInput.value;
@@ -976,17 +1123,24 @@ function runFnr() {
     return;
   }
 
-  const caseSensitive = fnrCaseChk.checked;
-  const q = caseSensitive ? query : query.toLowerCase();
+  let re;
+  try {
+    re = buildFnrRegex();
+  } catch (err) {
+    showFnrError('Invalid regular expression: ' + err.message);
+    return;
+  }
+  clearFnrError();
 
   lines.forEach((line, lineIdx) => {
-    const haystack = caseSensitive ? line : line.toLowerCase();
-    let pos = 0;
-    while (true) {
-      const found = haystack.indexOf(q, pos);
-      if (found === -1) break;
-      fnrMatches.push({ lineIdx, start: found, end: found + q.length });
-      pos = found + 1;
+    re.lastIndex = 0;
+    let m, guard = 0;
+    while ((m = re.exec(line)) !== null) {
+      // A pattern that can match the empty string (say /x*/) would spin
+      // forever, because lastIndex never advances. Nudge it manually.
+      if (m[0].length === 0) { re.lastIndex++; continue; }
+      fnrMatches.push({ lineIdx, start: m.index, end: m.index + m[0].length });
+      if (++guard > 5000) break;   // pathological pattern on one line
     }
   });
 
@@ -1027,10 +1181,27 @@ function fnrStep(delta) {
 
 function fnrReplaceCurrent() {
   if (fnrMatches.length === 0) return;
-  const m       = fnrMatches[fnrCursor];
-  const repl    = fnrReplInput.value;
-  const line    = lines[m.lineIdx];
-  lines[m.lineIdx] = line.slice(0, m.start) + repl + line.slice(m.end);
+  const m    = fnrMatches[fnrCursor];
+  const line = lines[m.lineIdx];
+
+  // Slicing the replacement straight in works for plain text, but would
+  // insert "$1" literally in regex mode. Run the replace against just the
+  // matched span so backreferences resolve.
+  let replaced;
+  if (fnrRegexChk.checked) {
+    let single;
+    try {
+      single = buildFnrRegex(false);   // non-global: one substitution
+    } catch (err) {
+      showFnrError('Invalid regular expression: ' + err.message);
+      return;
+    }
+    replaced = line.slice(m.start, m.end).replace(single, fnrReplacement());
+  } else {
+    replaced = fnrReplInput.value;
+  }
+
+  lines[m.lineIdx] = line.slice(0, m.start) + replaced + line.slice(m.end);
   setUnsaved(true);
 
   // Refresh just this row
@@ -1044,18 +1215,28 @@ function fnrReplaceCurrent() {
 
 function fnrReplaceAll() {
   if (fnrMatches.length === 0) return;
-  const query   = fnrFindInput.value;
-  const repl    = fnrReplInput.value;
-  const caseSens = fnrCaseChk.checked;
-  let count = 0;
+
+  let re;
+  try {
+    re = buildFnrRegex();
+  } catch (err) {
+    showFnrError('Invalid regular expression: ' + err.message);
+    return;
+  }
+  const repl  = fnrReplacement();
+  const total = fnrMatches.length;
+  let count   = 0;
 
   lines = lines.map(line => {
-    const flags = caseSens ? 'g' : 'gi';
-    // Escape regex special chars in query
-    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const re = new RegExp(escaped, flags);
-    const newLine = line.replace(re, () => { count++; return repl; });
-    return newLine;
+    re.lastIndex = 0;
+    return line.replace(re, (...args) => {
+      const whole = args[0];
+      if (whole.length === 0) return whole;   // never consume empty matches
+      count++;
+      // Re-run on the single matched span so $1 etc. resolve, without
+      // duplicating the substitution logic.
+      return whole.replace(buildFnrRegex(false), repl);
+    });
   });
 
   setUnsaved(true);
@@ -1118,14 +1299,126 @@ function setUnsaved(state) {
 }
 
 function updateFileName() {
-  document.getElementById('fileName').textContent = fileName;
+  const el = document.getElementById('fileName');
+  if (scriptsSource) {
+    const where = scriptsLabel + (scriptsSource.folder ? ' / ' + scriptsSource.folder : '');
+    el.textContent = '📁 ' + where + ' / ' + fileName;
+    el.title = 'Opened from ' + where + '. Save to Scripts (Ctrl+S) saves it back there.';
+  } else {
+    el.textContent = fileName;
+    el.title = '';
+  }
+}
+
+// ── Scripts folder ────────────────────────────────────────────────────────────
+// Open caption files from the server's Scripts folder and save them back,
+// without the network share or a copy on this computer. See scripts-picker.js
+// and scripts-folder.js on the server.
+
+(async function initScripts() {
+  try {
+    const auth = await (await fetch('/api/auth/status', { cache: 'no-store' })).json();
+    // The editor login can't open the controller: don't offer the link.
+    document.getElementById('controllerLink').hidden = !auth.authenticated;
+  } catch (e) { /* leave it hidden */ }
+  const st = await ScriptsPicker.status();
+  if (!st.available) return;
+  scriptsLabel = st.name || 'Scripts';
+  const openBtn = document.getElementById('scriptsOpenBtn');
+  const saveBtn = document.getElementById('scriptsSaveBtn');
+  openBtn.textContent = '📁 ' + scriptsLabel;
+  openBtn.title = 'Open a caption file from ' + scriptsLabel;
+  saveBtn.textContent = '💾 Save to ' + scriptsLabel;
+  saveBtn.title = 'Save to ' + scriptsLabel + ' (Ctrl+S when the file came from there)';
+  openBtn.hidden = false;
+  saveBtn.hidden = false;
+})();
+
+function showScriptsNotice(text, isError) {
+  const bar = document.getElementById('scriptsNotice');
+  document.getElementById('scriptsNoticeText').textContent = text;
+  bar.classList.toggle('error', !!isError);
+  bar.classList.add('show');
+}
+
+function hideScriptsNotice() {
+  document.getElementById('scriptsNotice').classList.remove('show');
+}
+
+function openFromScripts() {
+  const go = async () => {
+    const file = await ScriptsPicker.open({ mode: 'open', label: scriptsLabel,
+                                            folder: scriptsSource ? scriptsSource.folder : '' });
+    if (!file) return;
+    hideScriptsNotice();
+    loadText(file.text, file.name);
+    scriptsSource = { folder: file.folder, name: file.name, sha: file.sha };
+    updateFileName();
+  };
+  if (unsaved) {
+    openModal('📁 Open from ' + scriptsLabel,
+              'You have unsaved changes. Opening another file will discard them.', go);
+  } else {
+    go();
+  }
+}
+
+async function saveToScripts() {
+  if (lines.length === 0) return;
+  let folder, name, base;
+  if (scriptsSource) {
+    ({ folder, name, sha: base } = scriptsSource);
+  } else {
+    const where = await ScriptsPicker.open({ mode: 'save', label: scriptsLabel, name: fileName });
+    if (!where) return;
+    ({ folder, name } = where);
+    base = '';
+  }
+  const text = lines.join('\n') + '\n';
+  const btn = document.getElementById('scriptsSaveBtn');
+  btn.disabled = true;
+  let r, data = null;
+  try {
+    r = await fetch('/api/scripts/file?folder=' + encodeURIComponent(folder) +
+                    '&name=' + encodeURIComponent(name) + '&base=' + encodeURIComponent(base || ''),
+                    { method: 'POST', headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+                      body: text, credentials: 'same-origin' });
+    try { data = await r.json(); } catch (e) { /* not JSON */ }
+  } catch (e) {
+    btn.disabled = false;
+    showScriptsNotice('Not saved: the server didn\'t answer. Your text is still here; ' +
+                      'try again, or Download it.', true);
+    return;
+  }
+  btn.disabled = false;
+  if (!r.ok || !data) {
+    showScriptsNotice('Not saved: ' + ((data && data.error) || ('the server answered ' + r.status)) +
+                      ' Your text is still here; try again, or Download it.', true);
+    return;
+  }
+  const where = scriptsLabel + (data.folder ? ' / ' + data.folder : '');
+  scriptsSource = { folder: data.folder, name: data.name, sha: data.sha };
+  fileName = data.name;
+  setUnsaved(false);
+  updateFileName();
+  if (data.renamed) {
+    showScriptsNotice(`“${data.wanted}” in ${where} was changed by someone else (or is a ` +
+                      `different file), so it was left alone and yours was saved as ` +
+                      `“${data.name}”.`, false);
+  } else {
+    hideScriptsNotice();
+    toast(data.same ? `${where} already has this text` : `Saved to ${where}`);
+  }
 }
 
 // ── Global keyboard shortcuts ─────────────────────────────────────────────────
 
 document.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key === 'h') { e.preventDefault(); openFnr(); }
-  if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); downloadFile(); }
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+    e.preventDefault();
+    if (scriptsSource) saveToScripts(); else downloadFile();
+  }
   if (e.key === 'Escape' && fnrVisible) closeFnr();
 });
 
