@@ -337,7 +337,16 @@ function renderCaptions(state) {
   const intermissionEl = document.getElementById('intermissionOverlay');
 
   // ── Intermission takes top priority ──────────────────────────────────────
-  if (intermission) {
+          // ── Live text overrides everything, including intermission ──────────────
+          // An emergency caption (fire alarm, evacuation) must reach the audience
+          // even mid-intermission. For a deaf or hard-of-hearing patron this screen
+          // may be their ONLY notification — they can't hear the alarm or a house
+          // announcement. Previously the intermission branch returned early and hid
+          // the live overlay, so an emergency message sent during intermission was
+          // never shown at all.
+  const hasLive = liveText && liveText.trim().length > 0;
+
+  if (intermission && !hasLive) {
           intermissionEl.classList.add('visible');
           waiting.style.display        = 'none';
           captionArea.style.display    = 'none';
@@ -347,13 +356,12 @@ function renderCaptions(state) {
         intermissionEl.classList.remove('visible');
         
   // ── Live text takes priority ──────────────────────────────────────────────
-  const hasLive = liveText && liveText.trim().length > 0;
 
   if (hasLive) {
     waiting.style.display      = 'none';
     liveOverlay.style.display  = 'flex';
     // Dim the script behind it
-    captionArea.style.display  = current ? 'flex' : 'none';
+    captionArea.style.display  = (current && !intermission) ? 'flex' : 'none';
     captionArea.classList.add('dimmed');
     liveTextEl.innerHTML   = parseColorTags(liveText);
   } else {
