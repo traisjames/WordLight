@@ -392,6 +392,24 @@
     .modal-btns { display: flex; gap: 0.6rem; }
     .modal-btns button { flex: 1; }
 
+    /* ── Export PDF box ──────────────────────────────────────────────────────── */
+    .modal.export-box { max-width: 390px; }
+    .export-box h2 { color: var(--text); margin-bottom: 0.9rem; }
+    .exp-row { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.55rem; }
+    .exp-label { font-size: 0.78rem; color: var(--muted); min-width: 5.6rem; flex-shrink: 0; }
+    .exp-row select {
+      flex: 1; min-width: 0;   /* a select won't shrink in a flex row without this */
+      background: var(--bg); color: var(--text); border: 1px solid var(--border);
+      border-radius: 5px; padding: 0.3rem 0.4rem; font-size: 0.82rem; font-family: inherit;
+    }
+    .exp-choice {
+      display: flex; align-items: center; gap: 0.35rem;
+      font-size: 0.82rem; color: var(--text); cursor: pointer;
+    }
+    .exp-choice:has(input:disabled) { opacity: 0.4; cursor: default; }
+    .exp-checks { display: flex; flex-direction: column; gap: 0.4rem; margin: 0.15rem 0 0.9rem 6.2rem; }
+    .modal p.exp-help { font-size: 0.76rem; margin-bottom: 1rem; }
+
     /* ── Scripts folder notice (a save that went to another name, an error) ── */
     .scripts-notice {
       display: none; align-items: flex-start; gap: 0.75rem; flex-shrink: 0;
@@ -426,6 +444,8 @@
   <button class="btn btn-primary"   id="scriptsSaveBtn" onclick="saveToScripts()" hidden disabled
           title="Save to the Scripts folder (Ctrl+S when the file came from there)">💾 Save to Scripts</button>
   <button class="btn btn-primary"   id="downloadBtn" onclick="downloadFile()" disabled>⬇ Download</button>
+  <button class="btn btn-secondary" id="exportBtn" onclick="openExport()" disabled
+          title="Make a PDF to read or print, with the colours and notes">🖨 Export PDF</button>
 
   <div style="width:1px;height:1.2rem;background:var(--border);margin:0 0.2rem"></div>
 
@@ -598,6 +618,32 @@
   </div>
 </div>
 
+<!-- Export PDF box -->
+<div class="modal-overlay" id="exportModal">
+  <div class="modal export-box" role="dialog" aria-modal="true" aria-labelledby="exportTitle">
+    <h2 id="exportTitle">🖨 Export PDF</h2>
+    <label class="exp-row"><span class="exp-label">Font</span><select id="expFont"></select></label>
+    <label class="exp-row"><span class="exp-label">Text size</span><select id="expSize"></select></label>
+    <label class="exp-row"><span class="exp-label">Line spacing</span><select id="expSpacing"></select></label>
+    <div class="exp-row" role="radiogroup" aria-label="Page">
+      <span class="exp-label">Page</span>
+      <label class="exp-choice"><input type="radio" name="expPage" value="white" /> White (print)</label>
+      <label class="exp-choice"><input type="radio" name="expPage" value="dark" /> Dark (screen)</label>
+    </div>
+    <div class="exp-checks">
+      <label class="exp-choice"><input type="checkbox" id="expNotes" onchange="syncExportFlags()" /> Notes (page numbers, cues)</label>
+      <label class="exp-choice"><input type="checkbox" id="expFlags" /> # flags in the notes</label>
+      <label class="exp-choice"><input type="checkbox" id="expNumbers" /> Line numbers</label>
+    </div>
+    <p class="exp-help">The print box opens next. Set <b>Destination</b> to <b>Save as PDF</b>
+      (in Safari, use the <b>PDF</b> button at the bottom).</p>
+    <div class="modal-btns">
+      <button class="btn btn-secondary" onclick="closeExport()">Cancel</button>
+      <button class="btn btn-primary" id="exportGoBtn" onclick="runExport()">Make PDF…</button>
+    </div>
+  </div>
+</div>
+
 <script src="./global.js"></script>
 <script src="./scripts-picker.js"></script>
 <script>
@@ -690,6 +736,7 @@ function renderAll() {
     document.getElementById('lineCount').textContent = '0 lines';
     document.getElementById('downloadBtn').disabled  = true;
     document.getElementById('scriptsSaveBtn').disabled = true;
+    document.getElementById('exportBtn').disabled    = true;
     return;
   }
 
@@ -697,6 +744,7 @@ function renderAll() {
   addRow.style.display = 'block';
   document.getElementById('downloadBtn').disabled = false;
   document.getElementById('scriptsSaveBtn').disabled = false;
+  document.getElementById('exportBtn').disabled   = false;
 
   list.innerHTML = '';
   lines.forEach((_, i) => list.appendChild(buildRow(i)));
@@ -1411,6 +1459,244 @@ async function saveToScripts() {
   }
 }
 
+// ── Export PDF ────────────────────────────────────────────────────────────────
+// Makes a copy of the caption file to read or print: each line drawn the way
+// WordLight draws it (colours, bold, italic, ⏎ breaks, wide gaps), in the
+// font, size and spacing picked in the export box, with the notes under their
+// line. The copy is built in a hidden frame and handed to the browser's print
+// box, where "Save as PDF" makes the file. Printing through the browser keeps
+// the text real (searchable, selectable), works with every font on the list,
+// and needs nothing extra installed on the Pi.
+
+// The same fonts, in the same order, as the reader's Preferences page.
+const EXPORT_FONTS = [
+  ['System Default',                   'system-ui, -apple-system, sans-serif'],
+  ['OpenDyslexic (dyslexia-friendly)', "'OpenDyslexic', sans-serif"],
+  ['Comic Sans',                       "'Comic Sans MS', 'Comic Sans', cursive"],
+  ['Arial',                            'Arial, sans-serif'],
+  ['Helvetica',                        "'Helvetica Neue', Helvetica, sans-serif"],
+  ['Georgia',                          'Georgia, serif'],
+  ['Courier',                          "'Courier New', monospace"],
+  ['Times New Roman',                  "'Times New Roman', serif"],
+  ['Verdana',                          'Verdana, sans-serif'],
+  ['Tahoma',                           'Tahoma, sans-serif'],
+];
+const EXPORT_SIZES   = [10, 11, 12, 13, 14, 16, 18, 20, 24, 28];          // points
+const EXPORT_SPACING = [['Tight', 1.2], ['Normal', 1.45], ['Roomy', 1.7], ['Double', 2]];
+const EXPORT_DEFAULTS = {
+  font: 'Arial, sans-serif', size: 14, spacing: 1.45, page: 'white',
+  notes: true, flags: false, numbers: false,
+};
+const EXPORT_KEY = 'editorExportOptions';   // remembers the last choices
+
+// WordLight's colours are made for a black screen. On white paper the light
+// ones (yellow, green, cyan, white) nearly vanish, so white pages use a darker
+// shade of the same colour. Every shade here reads at 4.5:1 or better on white.
+const PAPER_COLORS = {
+  red: '#b91c1c', orange: '#c2410c', yellow: '#a16207', green: '#15803d',
+  cyan: '#0e7490', blue: '#1d4ed8', purple: '#6d28d9', pink: '#be185d',
+  gray: '#4b5563', grey: '#4b5563', white: '#111111',
+};
+
+const EXPORT_PAGES = {
+  white: { bg: '#ffffff', text: '#111111', note: '#555555', rule: '#cccccc' },
+  dark:  { bg: '#000000', text: '#ffffff', note: '#9ca3af', rule: '#333333' },
+};
+
+// The page's own font files, for a frame that doesn't load styles.css.
+const EXPORT_FONT_FACES = [
+  ['Regular', 'normal', 'normal'], ['Bold', 'bold', 'normal'],
+  ['Italic', 'normal', 'italic'], ['BoldItalic', 'bold', 'italic'],
+].map(([file, weight, style]) =>
+  "@font-face{font-family:'OpenDyslexic';src:url('/fonts/OpenDyslexic-" + file +
+  ".woff2') format('woff2');font-weight:" + weight + ';font-style:' + style + '}').join('');
+
+function loadExportOptions() {
+  const o = Object.assign({}, EXPORT_DEFAULTS);
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(EXPORT_KEY) || 'null'); } catch (e) { /* none saved */ }
+  if (saved && typeof saved === 'object') {
+    // Only values that are on the lists: the font and size go into CSS.
+    if (EXPORT_FONTS.some(f => f[1] === saved.font))     o.font    = saved.font;
+    if (EXPORT_SIZES.includes(saved.size))                o.size    = saved.size;
+    if (EXPORT_SPACING.some(s => s[1] === saved.spacing)) o.spacing = saved.spacing;
+    if (saved.page === 'white' || saved.page === 'dark')  o.page    = saved.page;
+    for (const k of ['notes', 'flags', 'numbers']) {
+      if (typeof saved[k] === 'boolean') o[k] = saved[k];
+    }
+  }
+  return o;
+}
+
+function saveExportOptions(o) {
+  try { localStorage.setItem(EXPORT_KEY, JSON.stringify(o)); } catch (e) { /* private window */ }
+}
+
+function fillExportSelect(id, items, value) {
+  const sel = document.getElementById(id);
+  sel.innerHTML = '';
+  for (const [label, v] of items) {
+    const opt = document.createElement('option');
+    opt.value = String(v);
+    opt.textContent = label;
+    if (v === value) opt.selected = true;
+    sel.appendChild(opt);
+  }
+}
+
+function openExport() {
+  if (lines.length === 0) return;
+  const o = loadExportOptions();
+  fillExportSelect('expFont', EXPORT_FONTS, o.font);
+  fillExportSelect('expSize', EXPORT_SIZES.map(s => [s + ' pt', s]), o.size);
+  fillExportSelect('expSpacing', EXPORT_SPACING, o.spacing);
+  document.querySelectorAll('input[name="expPage"]').forEach(r => { r.checked = (r.value === o.page); });
+  document.getElementById('expNotes').checked   = o.notes;
+  document.getElementById('expFlags').checked   = o.flags;
+  document.getElementById('expNumbers').checked = o.numbers;
+  syncExportFlags();
+  document.getElementById('exportModal').classList.add('open');
+  document.getElementById('exportGoBtn').focus();
+}
+
+function closeExport() {
+  document.getElementById('exportModal').classList.remove('open');
+}
+
+// The # flags are inside the notes, so they only apply with notes on.
+function syncExportFlags() {
+  document.getElementById('expFlags').disabled = !document.getElementById('expNotes').checked;
+}
+
+function readExportForm() {
+  const page = document.querySelector('input[name="expPage"]:checked');
+  return {
+    font:    document.getElementById('expFont').value,
+    size:    Number(document.getElementById('expSize').value),
+    spacing: Number(document.getElementById('expSpacing').value),
+    page:    page ? page.value : 'white',
+    notes:   document.getElementById('expNotes').checked,
+    flags:   document.getElementById('expFlags').checked,
+    numbers: document.getElementById('expNumbers').checked,
+  };
+}
+
+// parseColorTags() writes each colour as <span style="color:#hex">. Swap those
+// for the paper shades. Caption text can't fake one: its "<" is already "&lt;".
+function exportPaperColors(html) {
+  const byHex = {};
+  for (const [name, hex] of Object.entries(COLOR_MAP)) {
+    if (PAPER_COLORS[name]) byHex[hex.toLowerCase()] = PAPER_COLORS[name];
+  }
+  return html.replace(/<span style="color:(#[0-9a-fA-F]{3,8})">/g,
+    (m, hex) => byHex[hex.toLowerCase()] ? '<span style="color:' + byHex[hex.toLowerCase()] + '">' : m);
+}
+
+// Take the # flags (#Check_Sound, #SFX ...) out of a note and tidy the commas
+// they leave behind.
+function exportDropFlags(note) {
+  return note
+    .replace(/#[A-Za-z][\w-]*/g, '')
+    .replace(/\s*,\s*(?=,|$)/g, '')     // a comma with nothing after it
+    .replace(/^\s*,\s*/, '')            // a comma with nothing before it
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+// One line of the file as HTML. A line is "caption | note"; either part can be
+// empty. num is the editor's line number.
+function exportLineHtml(raw, num, o) {
+  const t = raw.trim();
+  if (t === '' || t === '|') return '<div class="gap"></div>';   // blank or silent line
+
+  const pipe    = raw.indexOf('|');
+  const caption = (pipe === -1 ? raw : raw.slice(0, pipe)).trim();
+  let   note    = (o.notes && pipe !== -1) ? raw.slice(pipe + 1).trim() : '';
+  if (note && !o.flags) note = exportDropFlags(note);
+  if (!caption && !note) return '';                 // a note-only line with notes off
+
+  let capHtml = caption ? parseColorTags(caption) : '';
+  if (o.page === 'white') capHtml = exportPaperColors(capHtml);
+  // Page numbers stand out, so the PDF can be matched to the paper script.
+  const noteHtml = escHtml(note).replace(/\bPage \d+[A-Za-z]?\b/g, '<b>$&</b>');
+
+  return '<div class="ln">' +
+    (o.numbers ? '<span class="num">' + num + '</span>' : '') +
+    '<div class="txt">' +
+      (capHtml ? '<div class="cap">' + capHtml + '</div>' : '') +
+      (note ? '<div class="note">' + noteHtml + '</div>' : '') +
+    '</div></div>';
+}
+
+function buildExportHtml(srcLines, o, title) {
+  const pal  = EXPORT_PAGES[o.page] || EXPORT_PAGES.white;
+  const body = srcLines.map((raw, i) => exportLineHtml(raw || '', i + 1, o)).join('\n');
+  const when = new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  const css =
+    EXPORT_FONT_FACES +
+    // The page rule carries the background too: without it Chrome leaves a
+    // white border round a dark page, even with "Background graphics" off.
+    '@page{margin:0.6in 0.65in;background:' + pal.bg + '}' +
+    'html{-webkit-print-color-adjust:exact;print-color-adjust:exact;background:' + pal.bg + '}' +
+    '*{box-sizing:border-box}' +
+    'body{margin:0;background:' + pal.bg + ';color:' + pal.text + ';font-family:' + o.font +
+      ';font-size:' + o.size + 'pt;line-height:' + o.spacing + '}' +
+    'h1{font-size:1.2em;line-height:1.25;margin:0 0 .2em}' +
+    '.meta{font-size:.7em;color:' + pal.note + ';margin:0 0 1.1em;padding-bottom:.6em;' +
+      'border-bottom:1px solid ' + pal.rule + '}' +
+    '.ln{display:flex;align-items:baseline;gap:.7em;margin:0 0 .3em;' +
+      'break-inside:avoid;page-break-inside:avoid}' +
+    '.num{flex:0 0 3.2em;text-align:right;font-size:.62em;color:' + pal.note +
+      ';font-family:system-ui,-apple-system,sans-serif;font-variant-numeric:tabular-nums}' +
+    '.txt{flex:1;min-width:0;overflow-wrap:break-word}' +
+    '.note{font-size:.72em;line-height:1.35;color:' + pal.note + ';margin-top:.1em}' +
+    '.gap{height:.8em}';
+  return '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">' +
+    '<title>' + escHtml(title) + '</title><style>' + css + '</style></head><body>' +
+    '<h1>' + escHtml(title) + '</h1>' +
+    '<div class="meta">' + srcLines.length + ' lines · from the WordLight editor · ' + escHtml(when) + '</div>' +
+    body + '</body></html>';
+}
+
+function runExport() {
+  const o = readExportForm();
+  saveExportOptions(o);
+  closeExport();
+  const title = (fileName || '').replace(/\.[^.]+$/, '').trim() || 'Script';
+
+  const old = document.getElementById('exportFrame');
+  if (old) old.remove();
+  const frame = document.createElement('iframe');
+  frame.id = 'exportFrame';
+  frame.title = 'PDF export';
+  frame.tabIndex = -1;
+  frame.setAttribute('aria-hidden', 'true');
+  frame.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
+  frame.addEventListener('load', async () => {
+    const w = frame.contentWindow;
+    // Wait for the chosen font in all four styles, so the PDF isn't made with
+    // a stand-in. Fonts already on the computer are ready at once.
+    try {
+      const f = o.size + 'pt ' + o.font;
+      await Promise.all(['', 'bold ', 'italic ', 'italic bold '].map(s => w.document.fonts.load(s + f)));
+      await w.document.fonts.ready;
+    } catch (e) { /* print with what loaded */ }
+    // Chrome names the PDF after the page title, so use the show's name while
+    // the print box is open.
+    const oldTitle = document.title;
+    document.title = title;
+    const restore = () => { document.title = oldTitle; };
+    w.addEventListener('afterprint', restore, { once: true });
+    w.focus();
+    w.print();
+    setTimeout(restore, 1000);
+  }, { once: true });
+  // srcdoc goes on before the frame joins the page, so its first load is the
+  // export (not an empty page that would fire 'load' first).
+  frame.srcdoc = buildExportHtml(lines, o, title);
+  document.body.appendChild(frame);
+}
+
 // ── Global keyboard shortcuts ─────────────────────────────────────────────────
 
 document.addEventListener('keydown', (e) => {
@@ -1420,6 +1706,7 @@ document.addEventListener('keydown', (e) => {
     if (scriptsSource) saveToScripts(); else downloadFile();
   }
   if (e.key === 'Escape' && fnrVisible) closeFnr();
+  if (e.key === 'Escape' && document.getElementById('exportModal').classList.contains('open')) closeExport();
 });
 
 // ── Confirm modal ─────────────────────────────────────────────────────────────

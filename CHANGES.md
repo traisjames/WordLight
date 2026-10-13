@@ -1,3 +1,42 @@
+# WordLight: Export PDF in the editor (2026-10-13)
+
+Built on the GitHub copy at commit 1fae57a.
+
+## Files (same folders as the repo)
+
+| File | Goes to | New or changed |
+|---|---|---|
+| `public/editor.html` | `public/` | changed: 🖨 Export PDF button and its box |
+| `README.md`, `CHANGES.md` | project root | changed |
+
+No server change, no new npm packages, no restart needed (reload the editor page).
+
+## What changed
+
+**🖨 Export PDF** (next to Download) makes a copy of the caption file to read
+or print. The box asks for:
+
+- **Font**: the same list as the reader's Preferences page (OpenDyslexic comes
+  from WordLight's own font files, so it works on any computer).
+- **Text size** (10 to 28 pt) and **line spacing** (tight, normal, roomy, double).
+- **Page**: white, for printing, where the light colours (yellow, green, cyan,
+  white) become a darker shade of the same colour so they read on paper; or
+  dark, WordLight's black background and its own colours, for a screen.
+- **Notes** (page numbers in bold, cues, scene titles) under their line;
+  **# flags** (`#Check_Sound`, `#SFX` ...) in the notes; **line numbers**
+  matching the editor.
+
+Make PDF opens the browser's print box; set Destination to **Save as PDF**
+(Safari: the PDF button). The PDF is named after the file. The choices are
+remembered in that browser.
+
+Why the print box and not a direct download: the browser's printing keeps the
+text real (searchable, selectable), embeds whichever font was picked, and needs
+no PDF library on the Pi. A direct-download PDF could only use fonts bundled
+with WordLight.
+
+---
+
 # WordLight: Scripts folder and editor login (2026-10-13)
 
 Built on the GitHub copy at commit 595c539 ("Oct 12 Update"). It **includes
