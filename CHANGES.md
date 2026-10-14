@@ -1,3 +1,40 @@
+# WordLight: the Script Converter's bypass (2026-10-13)
+
+Built on the GitHub copy at commit 69f5f8f. Goes with Script Converter 0.7.11.
+
+## Files (same folders as the repo)
+
+| File | Goes to | New or changed |
+|---|---|---|
+| `server.js` | project root | changed: `POST /api/check-admin` |
+| `README.md`, `CHANGES.md` | project root | changed |
+
+No new npm packages (`crypto` is built into Node). Restart after copying:
+`pm2 restart wordlight`.
+
+## What changed
+
+**`POST /api/check-admin`**, for the Script Converter's bypass (testing):
+holding Shift while pressing "Send the script" on the converter's page lets
+one script run whatever the converter's pause rules say, but only with the
+CC Server password, which is this admin password and never the editor
+password. The converter asks WordLight to check it instead of keeping a
+copy.
+
+- Answers only programs on the Pi itself (like `/api/connections`), on the
+  HTTPS port and on the plain-http `PORT`, which the converter uses.
+- `{"password": "..."}` in, `{"ok": true}` or `{"ok": false, "error": "..."}`
+  out. The password is compared by hash with a constant-time compare, and
+  is never logged or sent back; the log says only "[converter] Script
+  Converter bypass: the CC Server password was given" (or "a wrong ... was
+  given").
+- A wrong password is answered a second later. After 5 wrong ones in 15
+  minutes every try is refused (429) until they are 15 minutes old, the
+  right password included.
+- The shipped default admin password (`changeme`) never unlocks it.
+
+---
+
 # WordLight: Export PDF in the editor (2026-10-13)
 
 Built on the GitHub copy at commit 1fae57a.

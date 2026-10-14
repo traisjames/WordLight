@@ -81,6 +81,7 @@ const socketIo     = require('socket.io');
 const session      = require('cookie-session');
 const cookieParser = require('cookie-parser');
 const path         = require('path');
+const crypto       = require('crypto');
 
 // --- pm2.io custom metrics ----------------------------------------------------
 // Exposes live server state (connected readers, current line, intermission,
@@ -454,6 +455,53 @@ function sendConnections(req, res) {
   res.json(getConnectionCounts());
 }
 
+// POST /api/check-admin — the Script Converter's bypass, for testing: one
+// script may be sent to run whatever the converter's pause rules say, but
+// only with the CC Server password (this admin password, never the editor
+// password). The converter asks here rather than keeping a copy. Like
+// /api/connections it answers programs on this computer only, and on the
+// plain-http port too. Answers {ok:true} or {ok:false, error}; the password
+// is never logged or sent back. A wrong one is answered a second later, and
+// after 5 wrong ones in 15 minutes every try is refused until they age out.
+// The shipped default password ('changeme') never unlocks it.
+const ADMIN_CHECK_LIMIT     = 5;
+const ADMIN_CHECK_WINDOW_MS = 15 * 60 * 1000;
+const adminCheckFailures    = [];   // times of wrong passwords
+
+function samePassword(given, real) {
+  // compare fixed-length hashes, so the time taken says nothing about the password
+  const a = crypto.createHash('sha256').update(String(given)).digest();
+  const b = crypto.createHash('sha256').update(String(real)).digest();
+  return crypto.timingSafeEqual(a, b);
+}
+
+function checkAdminPassword(req, res) {
+  if (!isLocalRequest(req)) {
+    return res.status(403).json({ ok: false, error: 'This endpoint only accepts local requests' });
+  }
+  res.setHeader('Cache-Control', 'no-store');
+  const now = Date.now();
+  while (adminCheckFailures.length && now - adminCheckFailures[0] > ADMIN_CHECK_WINDOW_MS) {
+    adminCheckFailures.shift();
+  }
+  if (adminCheckFailures.length >= ADMIN_CHECK_LIMIT) {
+    return res.status(429).json({ ok: false,
+      error: 'Too many wrong CC Server passwords. Try again in 15 minutes.' });
+  }
+  if (ADMIN_PASSWORD === DEFAULT_ADMIN_PASSWORD) {
+    return res.json({ ok: false, error: 'WordLight still has its default admin password, so ' +
+      'it can\'t unlock the bypass. Set ADMIN_PASSWORD in .env first.' });
+  }
+  const given = req.body && typeof req.body.password === 'string' ? req.body.password : '';
+  if (given && samePassword(given, ADMIN_PASSWORD)) {
+    console.log('[converter] Script Converter bypass: the CC Server password was given');
+    return res.json({ ok: true });
+  }
+  adminCheckFailures.push(now);
+  console.log('[converter] Script Converter bypass: a wrong CC Server password was given');
+  setTimeout(() => res.json({ ok: false, error: 'That isn\'t the CC Server password.' }), 1000);
+}
+
 function updateSessionMetrics() {
   uniqueReadersMetric.set(uniqueReaderIds.size);
   totalSessionsMetric.set(totalSessionCount);
@@ -739,6 +787,7 @@ app.post('/api/oled-metrics', (req, res) => {
 // Who is connected, for the Script Converter on this Pi: it asks every two
 // seconds and only works while nobody is (see sendConnections above).
 app.get('/api/connections', sendConnections);
+app.post('/api/check-admin', checkAdminPassword);
 
 app.get('/api/log', requireAuth, (req, res) => {
   res.json({
@@ -1184,9 +1233,10 @@ server.listen(activePort, '0.0.0.0', () => {
 // request is redirected straight to the HTTPS equivalent on HTTPS_PORT.
 if (usingHttps) {
   const redirectApp = express();
-  // The one exception to the redirect: the Script Converter's local question
-  // (loopback only, just three numbers) is answered here directly.
+  // The exceptions to the redirect: the Script Converter's local questions
+  // (loopback only) are answered here directly.
   redirectApp.get('/api/connections', sendConnections);
+  redirectApp.post('/api/check-admin', express.json({ limit: '4kb' }), checkAdminPassword);
   redirectApp.use((req, res) => {
     const portSuffix = HTTPS_PORT === 443 ? '' : `:${HTTPS_PORT}`;
     res.redirect(301, `https://${req.hostname}${portSuffix}${req.originalUrl}`);

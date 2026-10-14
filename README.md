@@ -39,6 +39,7 @@ below); nothing in this project is tied to any specific venue.
 | `/api/scripts` | List a folder in the Scripts folder (`?folder=Season 26`) | ✅ Admin or editor login |
 | `/api/scripts/file` | Open (`GET ?path=…`) or save (`POST ?folder=…&name=…&base=…`, text body) a caption file | ✅ Admin or editor login |
 | `/api/connections` | `{controllers, readers, backstage}` connected now — for the Script Converter on the same Pi; also answered on the plain-http `PORT` | Pi itself only |
+| `/api/check-admin` | `POST {password}` → `{ok}`: is this the admin (CC Server) password? For the Script Converter's bypass; wrong answers wait 1 s, 5 wrong in 15 min lock it; never the default password; also on the plain-http `PORT` | Pi itself only |
 
 ---
 
@@ -559,6 +560,17 @@ keeps its work away from shows by asking WordLight who is connected:
   `http://127.0.0.1:3000/api/connections`, works with no redirect.
 - The converter then never works while a controller is open, and during
   the day only once nobody has been connected for 30 minutes.
+
+**The bypass, for testing.** Holding Shift while pressing "Send the script"
+on the converter's page asks for the CC Server password (this admin
+password, not the editor password). That one script then runs whatever the
+pause rules say, even with a controller open or the converter paused; every
+other script still waits. The converter asks WordLight to check the
+password (`POST /api/check-admin`, from the Pi itself only) and never keeps
+a copy. WordLight answers yes or no, never logs or returns the password,
+waits a second before a "no", and after 5 wrong passwords in 15 minutes
+refuses every try until they are 15 minutes old. With the shipped default
+password (`changeme`) it always says no.
 
 While the converter has unfinished work, the controller toolbar shows
 **📄 Converter waiting** with a **⏸ Pause 6 hours** button. Pressing it
