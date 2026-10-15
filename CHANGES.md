@@ -1,3 +1,89 @@
+# WordLight: the new setup script and settings menu (2026-10-14)
+
+Built on the GitHub copy at commit 108c30a. Nothing in WordLight itself
+changed (server.js, public/ and package.json are untouched).
+
+## Files (same folders as the repo)
+
+| File | Goes to | New or changed |
+|---|---|---|
+| `setup/setup.sh` | setup/ | rewritten: full install, then a settings menu |
+| `setup/connectivity-check.sh` | setup/ | new: offline caption network |
+| `setup/smb.conf.template` | setup/ | changed: names filled in by setup.sh |
+| `README.md`, `FILE_MAP.md`, `CHANGES.md` | project root | changed |
+
+After copying by hand: `chmod +x setup/setup.sh setup/connectivity-check.sh`.
+
+## What changed
+
+**The full install** (first run) now also sets the time zone, the Wi-Fi
+country (Pi), an editor login, the Scripts folder, start on boot, and
+optionally the Script Converter and the offline caption network. It asks
+for the sudo password once at the start, with a note that typing doesn't
+show. Node 22 is the minimum. The OLED display app is only started when
+the OLED was set up. Pi-only steps are skipped on other computers.
+
+**Running it again shows a menu** (a little like `raspi-config`): status,
+system settings (time zone, computer name, Wi-Fi country, start on boot,
+login password), Samba shares and passwords, the Scripts folder, the
+editor login, the Script Converter, the offline caption network, updating
+WordLight (git, or a zip for a computer with no internet; `.env`,
+`certs/`, the logo files and the theater name and email are kept), the
+admin password, and the full setup again. Restarting WordLight, updating
+and installing the converter refuse while anyone is connected.
+
+**Safer with any input:**
+
+- `.env` values are written so that WordLight's dotenv reads them back
+  exactly. Before, a password with `#` was cut at the `#` (a strong
+  password could quietly become a 3-letter one), and spaces and quotes
+  were changed. `.env` is now readable by its owner only (600), and setup
+  fixes that on existing installs too.
+- The theater name and support email are written as proper JavaScript
+  text, then checked with Node. Before, a name with an apostrophe
+  ("Children's Theatre") broke `public/global.js` and with it every page.
+- The Scripts folder must be a folder of your own, given as a full path (a
+  bare name means a folder in your home). Before, any existing folder
+  (even a system folder) was accepted and made writable through the
+  network share. Share names are checked too.
+- The welcome-message name and email take ordinary characters only (that
+  message is a script that runs at every login).
+- Login names and passwords are checked: the editor and admin need
+  different usernames and different passwords, and a refused answer is
+  asked again.
+- The Script Converter can't be "installed" from its own folder, and a
+  failed install puts the previous copy back. git never stops to ask for a
+  GitHub login.
+
+**Samba** (`smb.conf.template`): the real user, home, WordLight folder,
+Scripts folder and share name are filled in. The Scripts share asks
+**"Let anyone READ it without a password?" with No as the default**,
+since audience phones on the caption Wi-Fi could otherwise copy whole
+scripts. Files saved there belong to the setup user (`force user`), so
+WordLight can always edit them.
+
+**`setup/connectivity-check.sh`** (new): makes this computer answer
+Apple's, Android's and Windows' connectivity checks on a caption network
+with no internet. Mode A runs dnsmasq here (the network's DHCP then hands
+out this computer as the only DNS server, but only after the tests pass);
+mode B leaves DNS to the network. It checks port 80 and 53 first, runs its
+own 12 checks (7 in mode B) without needing `dig`, can list the names for
+the network company, and removes everything again, stopping nginx and
+dnsmasq only if it installed them for this. Run with `--help`.
+
+## Tested
+
+On an Ubuntu 24.04 VM rolled back to before WordLight was installed, two
+full rounds: the full install, every menu option, and deliberately bad or
+hostile answers (command tricks in names, addresses and menu choices,
+impossible IPs, a fake time zone, the wrong zip, a git address that tries
+to run a command, system folders as the Scripts folder, a password with
+`# "' $()` and a space). The admin login works with that password and
+refuses its first 3 letters. `bash -n` and shellcheck are clean. Not
+tested yet on a real Raspberry Pi (OLED, Wi-Fi country, power report).
+
+---
+
 # WordLight: the Script Converter's bypass (2026-10-13)
 
 Built on the GitHub copy at commit 69f5f8f. Goes with Script Converter 0.7.11.

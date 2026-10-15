@@ -75,6 +75,78 @@ pulled in by the ones above) rather than anything listed here.
 
 ---
 
+## Setup script (easiest)
+
+On a Raspberry Pi, or any Debian or Ubuntu computer, `setup/setup.sh` does
+every step of the Quick Start below for you: system packages, Node.js, pm2,
+your theater's name, the admin login, the editor login, the Scripts folder
+and its network shares, the login welcome message, starting WordLight and
+starting it after every reboot. It can also install the Script Converter
+and set up the offline caption network (both optional).
+
+```bash
+cd ~
+git clone https://github.com/traisjames/WordLight.git wordlight
+cd wordlight
+./setup/setup.sh
+```
+
+Run it as your normal user, **not** with `sudo`. It asks for your login
+password once at the start (for the steps that need sudo); nothing shows
+on screen while you type it, which is normal. The first install needs the
+internet (system packages, Node.js and npm).
+
+**From a zip instead of git** (GitHub's green **Code** button →
+**Download ZIP**, then copy it to the computer):
+
+```bash
+cd ~
+unzip WordLight-main.zip && mv WordLight-main wordlight
+cd wordlight && ./setup/setup.sh
+```
+
+A fresh Ubuntu Server has no `unzip` yet (Raspberry Pi OS does), and
+Linux's `tar` can't open zip files (a Mac's can). Use Python's instead,
+then put back the "can run" mark that it doesn't keep:
+
+```bash
+python3 -m zipfile -e WordLight-main.zip . && mv WordLight-main wordlight
+chmod +x wordlight/setup/*.sh
+```
+
+**Running it again** shows a menu instead of the full install: status,
+system settings (time zone, computer name, Wi-Fi country on a Pi, start on
+boot, login password), the network shares and Samba passwords, the Scripts
+folder, the editor login, the Script Converter (install or update, from
+git, a zip or a folder), the offline caption network, updating WordLight
+(git, or a zip for a computer with no internet), and resetting the admin
+password. Anything that restarts WordLight, or keeps the computer busy for
+minutes, refuses while anyone is connected, so it can't interrupt a show.
+It never changes the network settings (static IP, Wi-Fi networks): a
+mistake there can cut off the connection you're using.
+
+- **Passwords** go into `.env` exactly as typed (any characters), and
+  `.env` is kept readable by your login only. The editor password must
+  differ from the admin password.
+- **The Scripts share** asks for a password by default. Audience phones
+  join the caption Wi-Fi too, so a share anyone can read would let any of
+  them copy whole scripts. Files saved there over the network belong to
+  your login, so WordLight can always edit them.
+- **Offline caption network.** On a Wi-Fi with no internet, phones and
+  laptops notice that their "am I online?" checks fail, and drop the
+  Wi-Fi or switch to cellular. `setup/connectivity-check.sh` (in the menu)
+  makes this computer give those checks the answers devices expect, on
+  port 80, so keep WordLight on 3000/3443 there. Either this computer
+  answers the DNS part too (mode A: the network's DHCP must then hand out
+  this computer as the only DNS server, but only after the script's own
+  tests pass), or the network's DNS points the names here (mode B; the
+  script lists the names). `setup/connectivity-check.sh --help` has the
+  details.
+
+The steps below are the same install done by hand.
+
+---
+
 ## Quick Start
 
 ### 1. Install Node.js (if not already installed)
@@ -587,11 +659,21 @@ running, nothing appears. Settings: `CONVERTER_URL` in `.env` (see
 https by itself if the converter runs with a certificate; `off` turns the
 button off.
 
+**Installing it.** The setup script's Script Converter option installs it
+next to WordLight (`~/script-converter`, with its own Python environment,
+settings and jobs folders), from git, a zip or a folder. It sets the
+converter page's own password, runs its self-tests, and starts it under
+pm2 with WordLight's certificate and Scripts folder. Installing again
+keeps the old copy as `~/script-converter.previous`, and puts it back if
+the new one fails to install. A zip with a `wheels/` folder installs with
+no internet at all.
+
 ---
 
 ## Network Notes
 
 - All devices must be on the **same Wi-Fi network** as the Pi.
+- If that Wi-Fi has **no internet**, devices may drop it: see "Offline caption network" under the setup script above.
 - The server listens on `0.0.0.0` — accessible from any device on the LAN.
 - The `/api/qr` QR code uses the incoming `Host` header, so it works correctly for both local IP addresses and public domain names.
 - OSC uses UDP (not HTTP) — port `3001` must be reachable from your lighting/sound board on the local network.

@@ -1,3 +1,8 @@
+# Samba settings for WordLight, written by setup/setup.sh from
+# setup/smb.conf.template. setup.sh fills in the {{...}} names; running its
+# "Network shares" option again rewrites this file (the old one is kept as
+# /etc/samba/smb.conf.backup-<time>).
+
 #======================= Global Settings =======================
 
 [global]
@@ -31,26 +36,30 @@
   comment = WordLight server files
   read only = no
   browsable = yes
-  valid users = wordlight
-  path = /home/wordlight/CC_Server
+  valid users = {{USER}}
+  path = {{PROJECT_DIR}}
 
-[CC Storage]
- comment = Store scripts here - everyone can read, wordlight/WordMaker can write
- path = /home/wordlight/Scripts
+[{{SCRIPTS_SHARE}}]
+ comment = Store scripts here - {{SCRIPTS_COMMENT}}
+ path = {{SCRIPTS_DIR}}
  browsable = yes
- guest ok = yes
+ guest ok = {{SCRIPTS_GUEST}}
  read only = yes
- write list = wordlight, WordMaker
+ write list = {{USER}}, WordMaker
+# Everything saved here belongs to {{USER}} (who runs WordLight), so WordLight
+# can always edit it, even in folders made over the network. Who may write is
+# still checked against the login actually used (write list above).
+ force user = {{USER}}
  force group = scriptusers
  create mask = 0664
  directory mask = 0775
 
 [Wordlight Home]
- comment = Full home directory (read-write for wordlight only)
- path = /home/wordlight
+ comment = Full home directory (read-write for {{USER}} only)
+ path = {{HOME}}
  browsable = yes
  guest ok = no
- valid users = wordlight
+ valid users = {{USER}}
  read only = no
  create mask = 0770
  directory mask = 0770
