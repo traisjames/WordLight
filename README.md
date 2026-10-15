@@ -75,6 +75,85 @@ pulled in by the ones above) rather than anything listed here.
 
 ---
 
+## Hardware requirements
+
+One small computer runs the whole show; the audience uses their own phones.
+For most theaters the real limits are the Wi-Fi and, if you use it, the
+Script Converter, not the computer.
+
+| | Minimum | What the Playhouse runs |
+|---|---|---|
+| **Computer** | Raspberry Pi 3 (any model) or newer, or any 64-bit Intel/AMD or ARM computer | Raspberry Pi 3 Model B |
+| **Memory** | 1 GB | 1 GB |
+| **Operating system** | A **64-bit** Linux: Raspberry Pi OS Lite (64-bit), Debian or Ubuntu | 64-bit Debian 13 "Trixie" |
+| **Storage** | 8 GB microSD card (Raspberry Pi OS Lite takes about 3 GB) | |
+| **Network** | Ethernet to a Wi-Fi router or access point (see below) | |
+| **Power (Pi)** | The right supply: 5 V at 2.5 A for a Pi 3, 3 A for a Pi 4, 5 A for a Pi 5 | Pi 3 underclocked to 600 MHz, on a UPS |
+
+**How much it has been tested with:** the Playhouse's Pi 3, slowed to 600
+MHz for a weak power supply, handled 100 simulated audience phones in the
+load test with no problems and no memory growth. Larger audiences haven't
+been tested yet. Before a big show, run `load-test/` with the number of
+phones you expect (see `load-test/README.md`). On a 1 GB test computer,
+WordLight, the Script Converter (idle) and the network shares together
+still left about 630 MB of the memory free.
+
+**Why 64-bit, and why a Pi 3 or newer:** current Node.js (version 24, which
+the setup script installs) no longer comes in a 32-bit ARM version, and
+Node 22, the last one that does, gets updates only until April 2027. The
+64-bit Raspberry Pi OS runs on the Pi 3, 3A+, 3B+, 4, 400, 5, 500 and Zero
+2 W. The Pi 1, Pi 2, Zero and Zero W only run the 32-bit system, so they
+can't run WordLight.
+
+- **512 MB boards** (Pi 3A+, Zero 2 W) will probably run WordLight alone,
+  but that hasn't been tested, and they're too small for the Script
+  Converter. Neither has an Ethernet socket.
+- **Other computers:** an old laptop or mini PC with a 64-bit Intel/AMD or
+  ARM processor works too (everything except the OLED display, which needs
+  a Pi). The setup script needs Debian or Ubuntu; it has been tested on
+  Ubuntu 24.04.
+- **A Mac** has run WordLight for a whole show run: a 2013/2015 MacBook
+  Air, lid open with the screen brightness turned down, and `caffeinate -d`
+  running in Terminal so it never went to sleep. On a Mac, follow the Quick
+  Start below by hand; the setup script, network shares and offline caption
+  network are Linux-only. Current Node.js (24) needs macOS 13.5 or newer;
+  Node 22 runs on macOS 11 or newer, until April 2027, which covers older
+  Macs like that one.
+- **Windows** hasn't been tried. Node.js runs there (Windows 10 or newer),
+  but Windows has no `openssl`, so WordLight falls back to plain HTTP
+  (phone screens can't be kept awake) unless OpenSSL is installed, and
+  the pm2 log paths in `ecosystem.config.js` would need changing.
+- **Storage:** 16 GB or more leaves room for the Script Converter, logs
+  and updates. See "Reducing SD Card Wear" below.
+- **Power:** a supply that's too weak makes a Pi slow itself down or
+  crash. Use the official one for your model (the current is measured at
+  the plug, so a long or thin cable counts against it). `~/power_report`,
+  installed by the setup script, shows whether the Pi has ever been short
+  of power. A small UPS protects the SD card from sudden power cuts.
+
+**Wi-Fi.** Audience phones connect to a Wi-Fi network, and WordLight's
+computer joins that network, preferably by Ethernet. Don't use the Pi's
+own Wi-Fi as the hotspot: its Wi-Fi chip only handles about 8 devices at
+once. Use a Wi-Fi router or access point made for the number of phones you
+expect. If that network has no internet, see "Offline caption network"
+under the setup script below.
+
+**Audience and operator devices:** any phone, tablet or laptop with a
+current web browser. Nothing to install. The operator needs a laptop or
+tablet for the Caption Controller.
+
+**Script Converter (optional):** runs on the same computer. 1 GB is enough
+because it reads one page at a time, but it is slow on a Pi: about 25-30
+seconds per scanned page on a Pi 3, so a 150-page scanned script takes
+about an hour and a quarter. A Pi 4 or 5, or a laptop, is faster. It
+waits whenever WordLight is in use, so it never slows a show down.
+
+**OLED status display (optional, Pi only):** a 128×64 I2C OLED (SSD1306 or
+SSD1315) with 4 buttons on the Pi's GPIO pins. It shows the address and QR
+codes. See `oled_display.py`.
+
+---
+
 ## Setup script (easiest)
 
 On a Raspberry Pi, or any Debian or Ubuntu computer, `setup/setup.sh` does
@@ -159,6 +238,9 @@ sudo apt-get install -y nodejs
 
 The `setup_lts.x` URL always pulls the current Long Term Support release,
 so this stays correct as new versions come out.
+
+**On a Mac:** download the macOS installer from nodejs.org. On macOS 11
+to 13.4, pick a Node 22 release there, since Node 24 needs macOS 13.5.
 
 **Verify:**
 ```bash
