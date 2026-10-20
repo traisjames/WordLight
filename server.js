@@ -75,6 +75,7 @@ const SESSION_SECRET = process.env.SESSION_SECRET || DEFAULT_SESSION_SECRET;
 const express      = require('express');
 const http         = require('http');
 const https        = require('https');
+const net          = require('net');
 const fs           = require('fs');
 const { execSync } = require('child_process');
 const socketIo     = require('socket.io');
@@ -931,12 +932,15 @@ function converterRequest(base, method, apiPath) {
 
 // Like converterRequest, but if the answer failed in a way that means "wrong
 // kind of connection" (http to an https converter or the other way round),
-// try the other scheme once and keep using it if it works. Refused (not
-// running), timeouts and HTTP errors are real answers and aren't retried.
+// try the other scheme once and keep using it if it works. Refused (nothing
+// running) and real HTTP answers (an error status, or a body that isn't the
+// converter's JSON) aren't retried. A timeout is: on the Pi, plain http sent
+// to the converter's https port gets no answer at all (newer OpenSSL waits
+// for the rest of a "TLS record" that never comes) instead of a reset.
 async function askConverter(method, apiPath) {
   if (CONVERTER_OFF || !converterBase) return { ok: false, reason: 'off' };
   const first = await converterRequest(converterBase, method, apiPath);
-  if (first.ok || ['ECONNREFUSED', 'TIMEOUT', 'bad-json'].includes(first.reason)
+  if (first.ok || ['ECONNREFUSED', 'bad-json'].includes(first.reason)
       || String(first.reason).startsWith('http-')) {
     return first;
   }
@@ -1272,6 +1276,15 @@ server.listen(activePort, '0.0.0.0', () => {
 // a plain "http://" address (or an old bookmark from before HTTPS was set
 // up) lands here instead of getting a confusing "can't connect" — every
 // request is redirected straight to the HTTPS equivalent on HTTPS_PORT.
+//
+// PORT answers https too, with the same redirect. Browsers sometimes ask
+// https://…:PORT by themselves (Chrome's "Always use secure connections"
+// upgrades addresses with a port as well, and keeps the port), and a
+// plain-http port can only answer that with a TLS error. The first byte a
+// browser sends tells the two apart: every TLS connection starts with 22
+// (0x16, a handshake record); plain http starts with a letter (GET, POST…).
+// With HTTPS off (no certificate), none of this runs: PORT serves WordLight
+// itself over plain http, as before.
 if (usingHttps) {
   const redirectApp = express();
   // The exceptions to the redirect: the Script Converter's local questions
@@ -1279,11 +1292,30 @@ if (usingHttps) {
   redirectApp.get('/api/connections', sendConnections);
   redirectApp.post('/api/check-admin', express.json({ limit: '4kb' }), checkAdminPassword);
   redirectApp.use((req, res) => {
-    const portSuffix = HTTPS_PORT === 443 ? '' : `:${HTTPS_PORT}`;
+    const portSuffix = Number(HTTPS_PORT) === 443 ? '' : `:${HTTPS_PORT}`;
     res.redirect(301, `https://${req.hostname}${portSuffix}${req.originalUrl}`);
   });
-  http.createServer(redirectApp).listen(PORT, '0.0.0.0', () => {
-    console.log(`   HTTP:     port ${PORT} redirects to HTTPS`);
+
+  const plainRedirect = http.createServer(redirectApp);
+  const tlsRedirect   = https.createServer({
+    key:  fs.readFileSync(KEY_FILE),
+    cert: fs.readFileSync(CERT_FILE),
+  }, redirectApp);
+  tlsRedirect.on('tlsClientError', () => { /* a client that gave up mid-handshake */ });
+
+  const TLS_HANDSHAKE = 0x16;
+  net.createServer((socket) => {
+    socket.on('error', () => socket.destroy());
+    socket.setTimeout(10 * 1000, () => socket.destroy());   // connected but never said anything
+    socket.once('data', (first) => {
+      socket.setTimeout(0);                                 // the http/https server takes over
+      socket.pause();
+      socket.unshift(first);
+      (first[0] === TLS_HANDSHAKE ? tlsRedirect : plainRedirect).emit('connection', socket);
+      process.nextTick(() => socket.resume());
+    });
+  }).listen(PORT, '0.0.0.0', () => {
+    console.log(`   HTTP:     port ${PORT} redirects to HTTPS (http:// and https:// both work)`);
   });
 }
 

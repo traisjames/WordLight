@@ -752,6 +752,20 @@ PM2
   local scheme=http; [ -n "$certargs" ] && scheme=https
   ok "The converter is running: $scheme://$(hostname -I | awk '{print $1}'):8090"
   mark_done "converter-installed"
+
+  # Tell WordLight exactly how to reach it, so it never has to guess (with no
+  # CONVERTER_URL it tries http first, which an https converter may never answer)
+  local cur_url want_url="$scheme://127.0.0.1:8090"
+  cur_url=$(env_get CONVERTER_URL)
+  case "$cur_url" in
+    ""|"http://127.0.0.1:8090"|"https://127.0.0.1:8090")
+      if [ "$cur_url" != "$want_url" ] && set_env_value CONVERTER_URL "$want_url"; then
+        info "WordLight now reaches the converter at $want_url (CONVERTER_URL in .env)."
+        restart_wordlight
+      fi ;;
+    *) info "CONVERTER_URL in WordLight's .env is \"$cur_url\", so it was left as it is." ;;
+  esac
+  return 0
 }
 
 # ── Offline network: answer the devices' internet checks ─────────────────
@@ -823,7 +837,9 @@ do_update_wordlight() {
     read -rp "Choose [1]: " how; [ "${how:-1}" = 1 ] && how=git || how=zip
   fi
   if [ "$how" = git ]; then
-    git -C "$PROJECT_DIR" checkout -- public/global.js "${OWN_FILES[@]}" 2>/dev/null
+    # global.js and the logos are put back after the pull; package-lock.json is
+    # only ever changed here by npm itself, and npm install runs again below
+    git -C "$PROJECT_DIR" checkout -- public/global.js package-lock.json "${OWN_FILES[@]}" 2>/dev/null
     local dirty; dirty=$(git -C "$PROJECT_DIR" status --porcelain --untracked-files=no)
     if [ -n "$dirty" ]; then
       warn "These WordLight files were changed on this computer, so git can't update over them:"

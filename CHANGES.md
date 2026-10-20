@@ -1,3 +1,69 @@
+# WordLight 0.9.1: fixes from the first days on the Playhouse Pi (2026-10-20)
+
+Built on the GitHub copy at commit 99d6f01 (0.9.0).
+
+## Files (same folders as the repo)
+
+| File | Goes to | New or changed |
+|---|---|---|
+| `server.js` | project root | changed: port 3000 answers https too; finds an https converter on the Pi |
+| `package.json`, `package-lock.json` | project root | changed: version 0.9.1; the lock file's Node line now matches (22+) |
+| `setup/setup.sh` | setup/ | changed: sets `CONVERTER_URL`; Update restores `package-lock.json` |
+| `README.md`, `CHANGES.md` | project root | changed |
+
+No new npm packages. Restart after copying: `pm2 restart wordlight`.
+
+## What changed
+
+**The Script Converter button (and the controller's "Converter waiting")
+didn't appear on the Pi.** With no `CONVERTER_URL` in `.env`, WordLight
+first asks the converter over plain http and, if that fails, tries https.
+On the Pi, plain http sent to the converter's https port gets no answer at
+all (its newer OpenSSL waits for the rest of a "TLS record" that never
+comes), and WordLight counted a timeout as a real "no". It now tries the
+other scheme after a timeout too, so it finds an https converter within 2
+seconds and keeps using that address. Elsewhere (Ubuntu here) the
+converter hangs up at once, which was already handled.
+
+**setup.sh's converter option now sets `CONVERTER_URL`** in WordLight's
+`.env` to the converter's exact address (`https://127.0.0.1:8090` with
+WordLight's certificate, `http://…` without) and restarts WordLight if
+that changed, so nothing has to be guessed. A `CONVERTER_URL` someone set
+by hand (`off`, or another address) is left alone.
+
+**Port 3000 answers `https://` as well as `http://`**, with the same
+redirect to port 3443. Chrome with "Always use secure connections" on
+tries `https://…:3000` by itself, which got an "invalid response"
+(ERR_SSL_PROTOCOL_ERROR) instead of the redirect. The first byte a browser
+sends tells the two apart (every TLS connection starts with 22). The
+converter's local questions on port 3000 work as before. With HTTPS off
+(`HTTPS_ENABLED=false`, or no `openssl`), nothing changes: port 3000 is
+WordLight itself over plain http. Also: with `HTTPS_PORT=443` the redirect
+no longer adds `:443`.
+
+**Update WordLight (git) no longer stops on `package-lock.json`.** The
+repo's lock file said Node 18+ while `package.json` says 22+, so every
+`npm install` rewrote that line and git then counted the file as "changed
+on this computer". The lock file now matches, and Update restores it
+before pulling anyway (only npm ever changes it).
+
+## Tested
+
+Against the real converter code (run with a certificate, as on the Pi), a
+stand-in that hangs on plain http exactly as the Pi does ("timed out after
+3002 milliseconds with 0 bytes received"), and `CONVERTER_URL=https://…`:
+0.9.0 showed `available: false` with the hanging one, 0.9.1 finds it in
+2 s, and with the https address in 41 ms. Port 3000: plain http, https,
+other host names, the converter's calls, 60 mixed requests at once, a
+silent connection (closed after 10 s), junk bytes (400), headless Chromium
+from `http://` and `https://` on port 3000 landing on the 3443 page with
+the converter button showing; with HTTPS off and with no openssl, port
+3000 serves WordLight over plain http as before. The setup's
+`CONVERTER_URL` step in 10 combinations. `npm install` leaves the lock
+file unchanged. `node --check`, `bash -n` and shellcheck are clean.
+
+---
+
 # WordLight 0.9.0: version numbers (2026-10-19)
 
 Built on the GitHub copy at commit 5771ef1.

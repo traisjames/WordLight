@@ -10,7 +10,7 @@ audience — the theater name, colors, and logo — is fully configurable per
 installation (see [Branding your installation](#branding-your-installation)
 below); nothing in this project is tied to any specific venue.
 
-**Version 0.9.0.** What changed, version by version: `CHANGES.md`.
+**Version 0.9.1.** What changed, version by version: `CHANGES.md`.
 
 ---
 
@@ -384,7 +384,10 @@ choice afterward.
 By default the real app runs on port **3443** (`https://192.168.1.42:3443`),
 with plain port 3000 redirecting there automatically — so even an old
 bookmark or a typed URL without "https://" still ends up in the right
-place.
+place. Port 3000 redirects `https://` requests too: some browsers (Chrome
+with "Always use secure connections" on) try `https://…:3000` by
+themselves, which used to end in an "invalid response" error. With HTTPS
+off, port 3000 is WordLight itself, as plain http.
 
 If you'd rather drop the port number entirely — so URLs and QR codes are
 just `https://192.168.1.42/home` — run this **one-time** command on the Pi:
@@ -424,11 +427,11 @@ npm start
 
 You should see:
 ```
-✅ WordLight server running!
+✅ WordLight 0.9.1 server running!
    HTTPS:    generating self-signed certificate for: 192.168.1.42, 127.0.0.1
    HTTPS:    certificate generated successfully
    Home:     https://192.168.1.xx:3443/home
-   HTTP:     port 3000 redirects to HTTPS
+   HTTP:     port 3000 redirects to HTTPS (http:// and https:// both work)
    OSC:      UDP port 3001  (/CC/next · /CC/prev · /CC/line/<n> · /CC/intermission · /CC/resume)
 ```
 
@@ -746,8 +749,12 @@ screens never see any of this.
 WordLight asks the converter only while a controller page is open (every 5
 seconds, from the Pi to itself). If the converter isn't installed or isn't
 running, nothing appears. Settings: `CONVERTER_URL` in `.env` (see
-`env.example`) — default `http://127.0.0.1:8090`; WordLight switches to
-https by itself if the converter runs with a certificate; `off` turns the
+`env.example`). The setup script's converter option sets it to the right
+address (`https://127.0.0.1:8090` when the converter uses WordLight's
+certificate). Without it, the default is `http://127.0.0.1:8090`, and
+WordLight switches to https by itself if the converter runs with a
+certificate (on a Pi that can take 2 seconds the first time, because an
+https converter there doesn't answer plain http at all). `off` turns the
 button off.
 
 **Installing it.** The setup script's Script Converter option installs it
