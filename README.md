@@ -10,6 +10,8 @@ audience — the theater name, colors, and logo — is fully configurable per
 installation (see [Branding your installation](#branding-your-installation)
 below); nothing in this project is tied to any specific venue.
 
+**Version 0.9.0.** What changed, version by version: `CHANGES.md`.
+
 ---
 
 ## Pages

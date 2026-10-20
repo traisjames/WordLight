@@ -1237,9 +1237,11 @@ io.on('connection', (socket) => {
 
 const activePort   = usingHttps ? HTTPS_PORT : PORT;
 const activeScheme = usingHttps ? 'https' : 'http';
+// The version lives in package.json only (setup.sh's Status reads it there too)
+const WORDLIGHT_VERSION = require('./package.json').version;
 
 server.listen(activePort, '0.0.0.0', () => {
-  console.log('\n✅ WordLight server running!');
+  console.log(`\n✅ WordLight ${WORDLIGHT_VERSION} server running!`);
   // Log a home-page URL for every detected network interface
   if (serverIPs.length === 0) {
     console.log(`   Home:    ${activeScheme}://localhost:${activePort}/home`);

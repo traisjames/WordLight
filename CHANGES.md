@@ -1,3 +1,40 @@
+# WordLight 0.9.0: version numbers (2026-10-19)
+
+Built on the GitHub copy at commit 5771ef1.
+
+## Files (same folders as the repo)
+
+| File | Goes to | New or changed |
+|---|---|---|
+| `package.json`, `package-lock.json` | project root | changed: version 0.9.0 |
+| `server.js` | project root | changed: the start-up message shows the version |
+| `setup/setup.sh` | setup/ | changed: Status and Update show the version |
+| `README.md`, `CHANGES.md` | project root | changed |
+
+No new npm packages. Restart after copying: `pm2 restart wordlight`.
+
+## What changed
+
+WordLight now has a version number, **0.9.0**, kept in one place:
+`package.json`. The server's start-up message (`pm2 logs wordlight`) says
+"WordLight 0.9.0 server running!", and setup's Status and Update WordLight
+show it with the git commit, e.g. `0.9.0 (commit 5771ef1, 2026-10-19)`, or
+`0.9.0 (installed from a zip)`. Before, Status showed only the commit, or
+npm's placeholder `1.0.0` for a zip install.
+
+Everything in this file up to now makes up 0.9.0. From here on: the last
+number goes up for fixes (0.9.1), the middle one for new features
+(0.10.0), and 1.0.0 is for when a theater can install WordLight on its own
+with GETTING_STARTED.md.
+
+## Tested
+
+`node --check`, `bash -n` and shellcheck are clean. The server prints its
+version at start; Status's version line for a git copy, a zip copy, and a
+zip copy inside some other git folder, with `set -u` as setup.sh runs.
+
+---
+
 # WordLight: Script Converter button on the home page, ports in setup's Status (2026-10-19)
 
 Built on the GitHub copy at commit 2b9f138.

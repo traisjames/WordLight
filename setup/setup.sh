@@ -290,10 +290,11 @@ restart_wordlight() {
 pm2_has() { pm2 describe "$1" >/dev/null 2>&1; }
 
 # Which WordLight this is: the git commit, or package.json's version for a zip install
-wl_version() {
-  git -C "$PROJECT_DIR" log -1 --format='%h (%cd)' --date=short 2>/dev/null && return 0
-  local v; v=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["version"])' "$PROJECT_DIR/package.json" 2>/dev/null)
-  echo "version ${v:-?} (installed from a zip)"
+wl_version() {   # e.g. "0.9.0 (commit 5771ef1, 2026-10-19)" or "0.9.0 (installed from a zip)"
+  local v="" c=""
+  v=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["version"])' "$PROJECT_DIR/package.json" 2>/dev/null)
+  [ -d "$PROJECT_DIR/.git" ] && c=$(git -C "$PROJECT_DIR" log -1 --format='%h, %cd' --date=short 2>/dev/null)
+  if [ -n "$c" ]; then echo "${v:-?} (commit $c)"; else echo "${v:-?} (installed from a zip)"; fi
 }
 
 # Escapes a value for the right-hand side of a sed s|...|...| command
