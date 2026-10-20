@@ -788,6 +788,8 @@ app.post('/api/oled-metrics', (req, res) => {
 // seconds and only works while nobody is (see sendConnections above).
 app.get('/api/connections', sendConnections);
 app.post('/api/check-admin', checkAdminPassword);
+// For the home page's "Script Converter" button (see sendConverterLink below).
+app.get('/api/converter-link', sendConverterLink);
 
 app.get('/api/log', requireAuth, (req, res) => {
   res.json({
@@ -996,6 +998,43 @@ function watchConverter() {
     }
     refreshConverterStatus();
   }, CONVERTER_POLL_MS);
+}
+
+// GET /api/converter-link — whether the Script Converter runs on this
+// computer, and on which scheme and port, so the home page can show a
+// "Script Converter" button pointing at the same address the browser already
+// uses (only the port and scheme differ). The home page is public, so this
+// answers anyone, with only those three values: the converter's page asks
+// for its own password. The converter is asked at most once every 30
+// seconds, however many phones load the home page.
+const CONVERTER_LINK_MS = 30 * 1000;
+let   converterLink         = { available: false };
+let   converterLinkAt       = 0;
+let   converterLinkInFlight = null;
+
+function converterLinkFrom(r) {
+  if (!r.ok || !r.data || r.data.app !== 'script-converter' || !converterBase) return { available: false };
+  try {
+    const u = new URL(converterBase);
+    const scheme = u.protocol === 'https:' ? 'https' : 'http';
+    const port = Number(u.port) || (scheme === 'https' ? 443 : 80);
+    return { available: true, scheme, port };
+  } catch (e) {
+    return { available: false };
+  }
+}
+
+async function sendConverterLink(req, res) {
+  res.setHeader('Cache-Control', 'no-store');
+  if (Date.now() - converterLinkAt > CONVERTER_LINK_MS) {
+    if (!converterLinkInFlight) {
+      converterLinkInFlight = askConverter('GET', '/api/status')
+        .then((r) => { converterLink = converterLinkFrom(r); converterLinkAt = Date.now(); })
+        .finally(() => { converterLinkInFlight = null; });
+    }
+    await converterLinkInFlight;
+  }
+  res.json(converterLink);
 }
 
 // --- Sockets -----------------------------------------------------------------

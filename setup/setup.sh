@@ -910,6 +910,58 @@ if not apps:
   else
     echo "Internet checks: not set up"
   fi
+  show_ports
+}
+
+# ── Ports: every port in use, what it is, and whether it's answering ──────
+
+# Is anything listening on this port here? (ss needs no sudo for this.)
+# 0 yes, 1 no, 2 can't tell (no ss)
+port_listening() {   # port_listening tcp|udp PORT
+  command -v ss >/dev/null || return 2
+  local flag=t; [ "$1" = udp ] && flag=u
+  ss -Hln"$flag" "sport = :$2" 2>/dev/null | grep . >/dev/null
+}
+
+# One line: port/protocol, kind, listening or not, what it is (and the address)
+port_line() {   # port_line PORT tcp|udp KIND "what it is"
+  local state rc
+  port_listening "$2" "$1"; rc=$?
+  case $rc in 0) state="listening" ;; 1) state="NOT listening" ;; *) state="?" ;; esac
+  printf '  %-10s %-6s %-14s %s\n' "$1/$2" "$3" "$state" "$4"
+}
+
+show_ports() {
+  local ip port https_port osc_port conv_port conv_scheme mode
+  ip=$(hostname -I 2>/dev/null | awk '{print $1}'); ip=${ip:-this-computer}
+  port=$(env_get PORT); port=${port:-3000}
+  https_port=$(env_get HTTPS_PORT); https_port=${https_port:-3443}
+  osc_port=$(env_get OSC_PORT); osc_port=${osc_port:-3001}
+  echo ""
+  echo "Ports (the addresses work from any device on the same network):"
+  if [ "$(env_get HTTPS_ENABLED)" = false ]; then
+    port_line "$port" tcp http "WordLight (HTTPS is off in .env): http://$ip:$port/home"
+  else
+    port_line "$https_port" tcp https "WordLight: https://$ip:$https_port/home"
+    port_line "$port" tcp http "WordLight, sends browsers on to https (port $https_port)"
+  fi
+  port_line "$osc_port" udp OSC "WordLight cues from a lighting or sound board"
+  if [ -f "$CONV_PM2" ] || pm2_has script-converter; then
+    # The pm2 file's args, as a list ("--port", "8091") or one string (--port 8091)
+    conv_port=$(grep -oE -- '--port[", =]+[0-9]+' "$CONV_PM2" 2>/dev/null | grep -oE '[0-9]+$')
+    conv_port=${conv_port:-8090}
+    conv_scheme=http; grep -q -- '--cert' "$CONV_PM2" 2>/dev/null && conv_scheme=https
+    port_line "$conv_port" tcp "$conv_scheme" "Script Converter: $conv_scheme://$ip:$conv_port"
+  fi
+  if [ -f /etc/wordlight/connectivity-check.state ]; then
+    mode=$(grep '^mode=' /etc/wordlight/connectivity-check.state | cut -d= -f2)
+    port_line 80 tcp http "Offline network: devices' \"am I online?\" checks (nginx)"
+    [ "$mode" = A ] && port_line 53 udp DNS "Offline network: the check names (dnsmasq)"
+  fi
+  if systemctl is-active --quiet smbd 2>/dev/null; then
+    port_line 445 tcp SMB "Network shares (Samba): smb://$ip"
+  fi
+  port_line 22 tcp SSH "Logging in to this computer: ssh $ME@$ip"
 }
 
 # ═══════════════════════════════════════════════════════════════════════════

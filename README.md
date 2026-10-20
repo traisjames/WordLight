@@ -40,6 +40,7 @@ below); nothing in this project is tied to any specific venue.
 | `/api/scripts/file` | Open (`GET ?path=…`) or save (`POST ?folder=…&name=…&base=…`, text body) a caption file | ✅ Admin or editor login |
 | `/api/connections` | `{controllers, readers, backstage}` connected now — for the Script Converter on the same Pi; also answered on the plain-http `PORT` | Pi itself only |
 | `/api/check-admin` | `POST {password}` → `{ok}`: is this the admin (CC Server) password? For the Script Converter's bypass; wrong answers wait 1 s, 5 wrong in 15 min lock it; never the default password; also on the plain-http `PORT` | Pi itself only |
+| `/api/converter-link` | `{available, scheme, port}`: is the Script Converter running on this computer, and where? For the home page's **Script Converter** button. Asks the converter at most every 30 s | No |
 
 ---
 
@@ -81,7 +82,7 @@ One small computer runs the whole show; the audience uses their own phones.
 For most theaters the real limits are the Wi-Fi and, if you use it, the
 Script Converter, not the computer.
 
-| | Minimum | What the Playhouse runs |
+| | Minimum | Used at Des Moines Community Playhouse |
 |---|---|---|
 | **Computer** | Raspberry Pi 3 (any model) or newer, or any 64-bit Intel/AMD or ARM computer | Raspberry Pi 3 Model B |
 | **Memory** | 1 GB | 1 GB |
@@ -90,8 +91,8 @@ Script Converter, not the computer.
 | **Network** | Ethernet to a Wi-Fi router or access point (see below) | |
 | **Power (Pi)** | The right supply: 5 V at 2.5 A for a Pi 3, 3 A for a Pi 4, 5 A for a Pi 5 | Pi 3 underclocked to 600 MHz, on a UPS |
 
-**How much it has been tested with:** the Playhouse's Pi 3, slowed to 600
-MHz for a weak power supply, handled 100 simulated audience phones in the
+**How much it has been tested with:** the Pi 3 at Des Moines Community
+Playhouse, slowed to 600 MHz for a weak power supply, handled 100 simulated audience phones in the
 load test with no problems and no memory growth. Larger audiences haven't
 been tested yet. Before a big show, run `load-test/` with the number of
 phones you expect (see `load-test/README.md`). On a 1 GB test computer,
@@ -112,13 +113,13 @@ can't run WordLight.
   ARM processor works too (everything except the OLED display, which needs
   a Pi). The setup script needs Debian or Ubuntu; it has been tested on
   Ubuntu 24.04.
-- **A Mac** has run WordLight for a whole show run: a 2013/2015 MacBook
-  Air, lid open with the screen brightness turned down, and `caffeinate -d`
-  running in Terminal so it never went to sleep. On a Mac, follow the Quick
-  Start below by hand; the setup script, network shares and offline caption
-  network are Linux-only. Current Node.js (24) needs macOS 13.5 or newer;
-  Node 22 runs on macOS 11 or newer, until April 2027, which covers older
-  Macs like that one.
+- **A Mac** has run WordLight for a whole show run: a 2017 MacBook Air
+  (1.8 GHz Core i5, 8 GB) on macOS 12, lid open with the screen brightness
+  turned down, and `caffeinate -d` running in Terminal so it never went to
+  sleep. On a Mac, follow the Quick Start below by hand; the setup script,
+  network shares and offline caption network are Linux-only. Node.js 24
+  officially needs macOS 13.5 or newer, though it also runs on that Mac's
+  macOS 12.7.6; Node 22 supports macOS 11 or newer, until April 2027.
 - **Windows** hasn't been tried. Node.js runs there (Windows 10 or newer),
   but Windows has no `openssl`, so WordLight falls back to plain HTTP
   (phone screens can't be kept awake) unless OpenSSL is installed, and
@@ -142,11 +143,16 @@ under the setup script below.
 current web browser. Nothing to install. The operator needs a laptop or
 tablet for the Caption Controller.
 
-**Script Converter (optional):** runs on the same computer. 1 GB is enough
-because it reads one page at a time, but it is slow on a Pi: about 25-30
-seconds per scanned page on a Pi 3, so a 150-page scanned script takes
-about an hour and a quarter. A Pi 4 or 5, or a laptop, is faster. It
-waits whenever WordLight is in use, so it never slows a show down.
+**Script Converter (optional):** runs on the same computer and uses at
+most about one of the Pi's four cores. It is slow on a Pi: on the
+Playhouse's Pi 3 (600 MHz, 1 GB) it read scanned scripts at about 35-37
+seconds a page (98 pages in 58 minutes, 103 pages in 63 minutes): about
+half an hour for a 50-page scan, an hour for 100 pages and an hour and a
+half for 150. Making the captions afterwards takes under two minutes more. Memory is the tight
+part: while reading, the converter used about 350-450 MB, leaving as
+little as 170 MB free, so 1 GB is enough, but not by much. A Pi 4 or 5,
+or a laptop, is faster. It waits whenever WordLight is in use, so it
+never slows a show down.
 
 **OLED status display (optional, Pi only):** a 128×64 I2C OLED (SSD1306 or
 SSD1315) with 4 buttons on the Pi's GPIO pins. It shows the address and QR
@@ -239,8 +245,9 @@ sudo apt-get install -y nodejs
 The `setup_lts.x` URL always pulls the current Long Term Support release,
 so this stays correct as new versions come out.
 
-**On a Mac:** download the macOS installer from nodejs.org. On macOS 11
-to 13.4, pick a Node 22 release there, since Node 24 needs macOS 13.5.
+**On a Mac:** download the macOS installer from nodejs.org. Node 24
+officially needs macOS 13.5 or newer; on older macOS, Node 22 (macOS 11 or
+newer) is the supported choice.
 
 **Verify:**
 ```bash
@@ -749,6 +756,12 @@ pm2 with WordLight's certificate and Scripts folder. Installing again
 keeps the old copy as `~/script-converter.previous`, and puts it back if
 the new one fails to install. A zip with a `wheels/` folder installs with
 no internet at all.
+
+**One link for everyone.** While the converter is running, WordLight's
+home page shows a **Script Converter** button (under Editor) that opens
+it at the same address, on the converter's own port. So the home page is
+the only link people need. The converter's page still asks for its own
+password.
 
 ---
 

@@ -266,6 +266,7 @@
     <div class="section-title">Editor</div>
     <div class="btn-row">
         <a class="btn btn-link" href="/editor" title="Caption Editor">Caption Editor</a>
+        <a class="btn btn-login" id="converterLink" href="#" title="Turn a show script (PDF or Word) into a caption file. Has its own password." style="display:none">Script Converter</a>
     </div>
   </div>
   
@@ -319,6 +320,25 @@
     supportLink.href = 'mailto:' + SUPPORT_EMAIL;
     supportLink.style.display = '';
   }
+
+  // Show the Script Converter button only when the converter runs on this
+  // computer. It opens the converter at the same address this page was
+  // opened with, on the converter's own port and scheme.
+  fetch('/api/converter-link', { cache: 'no-store' })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((d) => {
+      if (!d || !d.available || !Number.isInteger(d.port) || !/^https?$/.test(d.scheme)) return;
+      const u = new URL(window.location.href);
+      u.protocol = d.scheme + ':';
+      u.port = String(d.port);
+      u.pathname = '/';
+      u.search = '';
+      u.hash = '';
+      const link = document.getElementById('converterLink');
+      link.href = u.href;
+      link.style.display = '';
+    })
+    .catch(() => { /* no converter: the button stays hidden */ });
 </script>
 <script>
   // Show the reader URL beneath the QR code

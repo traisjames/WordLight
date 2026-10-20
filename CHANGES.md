@@ -1,3 +1,49 @@
+# WordLight: Script Converter button on the home page, ports in setup's Status (2026-10-19)
+
+Built on the GitHub copy at commit 2b9f138.
+
+## Files (same folders as the repo)
+
+| File | Goes to | New or changed |
+|---|---|---|
+| `server.js` | project root | changed: `GET /api/converter-link` |
+| `public/home.html` | public/ | changed: Script Converter button |
+| `setup/setup.sh` | setup/ | changed: ports list in Status |
+| `README.md`, `CHANGES.md` | project root | changed |
+
+No new npm packages. Restart after copying: `pm2 restart wordlight`.
+
+## What changed
+
+**Script Converter button on the home page** (under Editor), so the home
+page is the only link people need. It shows only while the converter is
+running on this computer, and opens it at the same address the home page
+was opened with, on the converter's own port and scheme (https when it
+uses WordLight's certificate). The converter's page still asks for its own
+password. The home page asks the new `GET /api/converter-link`, which
+answers only `{available, scheme, port}` and asks the converter at most
+once every 30 seconds, however many phones load the home page.
+
+**setup.sh Status lists every port:** WordLight's https and http ports
+(or http only when `HTTPS_ENABLED=false`), its OSC port (UDP), the Script
+Converter's port and scheme, the offline network's port 80 (and DNS port 53
+in mode A), Samba (445) and SSH (22). Each line shows the protocol,
+whether something is listening there right now, what it is, and the
+address to open.
+
+## Tested
+
+In a test copy: the endpoint with no converter, an https converter (found
+by itself from the default http address), an http converter, and
+`CONVERTER_URL=off`; 50 home page loads in a row asked the converter once.
+The page in headless Chromium: the button is hidden or shown and points at
+the right address in each case, with no page errors. The ports list with
+HTTPS on and off, both kinds of converter pm2 file, a different converter
+port, and the offline network in modes A and B. `node --check`, `bash -n`
+and shellcheck are clean.
+
+---
+
 # WordLight: the new setup script and settings menu (2026-10-14)
 
 Built on the GitHub copy at commit 108c30a. Nothing in WordLight itself
