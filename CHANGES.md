@@ -1,3 +1,38 @@
+# GETTING_STARTED.md: the beginner guide (2026-10-20)
+
+Built on the GitHub copy at commit 5c6fe10 (0.9.1). Documentation only:
+no code changed, so the version stays 0.9.1.
+
+## Files (same folders as the repo)
+
+| File | Goes to | New or changed |
+|---|---|---|
+| `GETTING_STARTED.md` | project root | new |
+| `README.md`, `FILE_MAP.md`, `CHANGES.md` | project root | changed: links to the guide |
+
+## What changed
+
+**GETTING_STARTED.md**, the guide `setup/setup.sh` has been pointing to,
+is written: for a theater with no IT person, from the shopping list to
+show day. It covers Raspberry Pi Imager (Raspberry Pi OS Lite 64-bit,
+host name, user, SSH), logging in from a Mac or Windows, updating the
+system, **Setting a Static IP** (the section setup.sh names: a router
+DHCP reservation first, then on the Pi with `nmcli` for Raspberry Pi OS
+Trixie's `netplan-eth0` connection, then Ubuntu Server's netplan), every
+question the setup asks with a suggested answer, a test run, the logo
+and theater name, the OLED wiring, the network shares from a Mac or
+Windows, the Script Converter, the setup menu, what to write down, a
+show-day checklist, and common problems. Photos can be added later:
+the places are marked in the file (`docs/images/…`).
+
+Setting the address on the Pi itself (Option 2) follows the Raspberry Pi
+OS documentation. The connection names (`netplan-eth0`,
+`netplan-wlan0-<network>`) and NetworkManager's saved files in
+`/etc/netplan/` were checked on the Playhouse Pi; changing the address
+there hasn't been tried yet.
+
+---
+
 # WordLight 0.9.1: fixes from the first days on the Playhouse Pi (2026-10-20)
 
 Built on the GitHub copy at commit 99d6f01 (0.9.0).

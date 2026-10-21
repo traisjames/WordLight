@@ -12,6 +12,10 @@ below); nothing in this project is tied to any specific venue.
 
 **Version 0.9.1.** What changed, version by version: `CHANGES.md`.
 
+**New to this?** [GETTING_STARTED.md](GETTING_STARTED.md) walks through
+everything from the shopping list to the first show, with no Linux
+knowledge needed.
+
 ---
 
 ## Pages
@@ -163,6 +167,9 @@ codes. See `oled_display.py`.
 ---
 
 ## Setup script (easiest)
+
+(Step by step from a blank SD card, including the fixed IP address the
+setup doesn't set: [GETTING_STARTED.md](GETTING_STARTED.md).)
 
 On a Raspberry Pi, or any Debian or Ubuntu computer, `setup/setup.sh` does
 every step of the Quick Start below for you: system packages, Node.js, pm2,

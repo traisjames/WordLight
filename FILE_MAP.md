@@ -19,7 +19,7 @@ wordlight/                          ← project root (e.g. /home/wordlight/CC_Se
 ├── env.example                     ← template to copy from
 ├── README.md                       ← main documentation
 ├── PM2_MONITORING.md               ← pm2.io dashboard guide
-├── GETTING_STARTED.md              ← beginner setup guide (not yet written)
+├── GETTING_STARTED.md              ← beginner guide: parts, SD card, fixed IP, setup, show day
 ├── FILE_MAP.md                     ← this file
 ├── oled_display.py                 ← OLED screen + buttons (Raspberry Pi only)
 ├── scripts-folder.js               ← the Scripts folder: list, open, save (used by server.js)
