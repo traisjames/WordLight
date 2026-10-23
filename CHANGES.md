@@ -1,3 +1,61 @@
+# WordLight 0.9.4: Download a backup from the logging page (2026-10-23)
+
+Built on the GitHub copy at commit 43f3eef (0.9.3).
+
+## Files (same folders as the repo)
+
+| File | Goes to | New or changed |
+|---|---|---|
+| `backup-web.js` | project root | new: the backup routes |
+| `server.js` | project root | changed: adds the backup routes (about 10 lines) |
+| `public/logging.html` | public/ | changed: the Backup panel |
+| `package.json`, `package-lock.json` | project root | changed: version 0.9.4 |
+| `README.md`, `GETTING_STARTED.md`, `FILE_MAP.md`, `CHANGES.md` | project root | changed |
+
+No new npm packages. Update with setup.sh's menu 10; nothing else to run.
+
+## What changed
+
+**A backup without a terminal.** The logging page (admin login) has a new
+Backup panel: **Make and download a backup**, with a checkbox to include the
+Script Converter's jobs (it shows their size). It makes the same file as
+setup.sh's menu 13, by running the same `setup/backup_tool.py`, so setup.sh's
+Restore reads it the same way: the Scripts folder, WordLight's settings
+without any password, and the Script Converter's program and settings.
+
+- Admin login only. The editor login and signed-out requests get 401; a
+  backup is only started by the page's own JSON request, never a plain form
+  post.
+- It refuses while anyone is connected (controllers, readers, backstage; the
+  logging page itself isn't counted), the same rule as setup.sh, and refuses
+  the jobs while the converter is working on a show.
+- It runs in the background (`nice -n 10`) and the page asks for its status
+  every 2 seconds, because on a Pi 3 a backup can take longer than a browser
+  waits for one request. The page then downloads the file and offers
+  "Download it again".
+- The file is made in `~/WordLight-backups` rather than `/tmp`, which is in
+  memory on Raspberry Pi OS, so a copy also stays on the Pi, where setup.sh's
+  Restore lists it.
+- The download only serves `WordLight-backup-*.tar.gz` files from that
+  folder, and is never cached.
+- Without `python3` (or `setup/backup_tool.py`) the panel says so and the
+  button is off. Only counts and sizes come back to the page, never file
+  contents.
+
+New routes, all behind the admin login: `GET /api/backup/status`,
+`POST /api/backup`, `GET /api/backup/download?name=`.
+
+## Tests (on the test VM, Ubuntu 24.04, after updating it from 0.9.1 to 0.9.3 with menu 9 there)
+
+- Signed out: 401. Editor login: 401. A form post: 415. With a fake reader
+  connected: 409 ("1 reader"). A name like `../../.env`: 400. A backup
+  that isn't there: 404.
+- Backup with the converter's jobs: made, read back and checked; the download
+  is byte-identical to the copy left on the VM, passes `backup_tool.py check`,
+  records the version (0.9.3, commit 43f3eef), and has none of the password
+  values from `.env`.
+- Travis tried the page in a browser: it made and downloaded the backup.
+
 # WordLight 0.9.3: setup.sh: back up and restore, to a file or a flash drive (2026-10-23)
 
 Built on the GitHub copy at commit d460f86 (0.9.2).

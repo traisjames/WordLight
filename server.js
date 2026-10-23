@@ -830,6 +830,19 @@ app.post('/api/log/reset', requireAuth, (req, res) => {
   res.json({ success: true });
 });
 
+// --- Backups (the logging page's "Download a backup") -------------------------
+// The same file as setup.sh's menu 13, made by setup/backup_tool.py: see
+// backup-web.js. Admin login only; refuses while anyone is connected.
+require('./backup-web').addBackupRoutes(app, {
+  requireAuth,
+  getConnectionCounts,
+  askConverter,
+  scriptsDir:  SCRIPTS_DIR,
+  scriptsName: SCRIPTS_NAME,
+  projectDir:  __dirname,
+  version:     require('./package.json').version,
+});
+
 // --- Helpers ------------------------------------------------------------------
 
 /**

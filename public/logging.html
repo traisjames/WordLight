@@ -205,6 +205,25 @@
       transform: scale(1.08);
     }
 
+    /* ── Backup ── */
+    .backup-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem;
+    }
+    .backup-panel h3 { font-size: 0.95rem; margin-bottom: 0.3rem; }
+    .backup-panel p  { font-size: 0.82rem; color: var(--muted); line-height: 1.45; margin-bottom: 0.8rem; }
+    .backup-row { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
+    .backup-panel label { font-size: 0.85rem; display: inline-flex; gap: 0.4rem; align-items: center; cursor: pointer; }
+    button.btn-export { cursor: pointer; font-family: inherit; }
+    button.btn-export:disabled { opacity: 0.5; cursor: default; }
+    button.btn-export:disabled:hover { background: #1e3a5f; color: #93c5fd; }
+    #backupMsg { font-size: 0.85rem; margin-top: 0.8rem; line-height: 1.45; }
+    #backupMsg.error { color: #fca5a5; }
+    #backupMsg.ok    { color: #86efac; }
+    #backupSummary { font-size: 0.78rem; color: var(--muted); margin-top: 0.4rem; padding-left: 1.1rem; line-height: 1.5; }
+
     /* ── Reset ── */
 
     .btn-export {
@@ -351,6 +370,22 @@
     <span style="font-size:0.8rem;color:var(--muted)">
       Exports all connection events since last reset as a .csv file
     </span>
+  </div>
+
+  <!-- Backup (admin only, like this whole page) -->
+  <div class="backup-panel" id="backupPanel" hidden>
+    <h3>💾 Backup</h3>
+    <p>One file with the Scripts folder, WordLight's settings and the Script Converter.
+      Passwords are never in it, so a restore asks for new ones. Restore it with
+      <code>setup/setup.sh</code>, menu 13. A copy also stays on this computer in
+      <code>WordLight-backups</code>. Keep the file private: it holds your scripts.</p>
+    <div class="backup-row">
+      <button class="btn-export" id="backupBtn" type="button" onclick="startBackup()">⬇ Make and download a backup</button>
+      <label id="backupJobsLabel" hidden><input type="checkbox" id="backupJobs"> <span id="backupJobsText">Include the converter's jobs</span></label>
+    </div>
+    <div id="backupMsg" role="status" aria-live="polite"></div>
+    <ul id="backupSummary"></ul>
+    <a class="nav-link" id="backupAgain" hidden href="#" download>Download it again</a>
   </div>
 
   <!-- Reader Breakdown -->
@@ -568,8 +603,111 @@
     }
   }
 
+  // ── Backup ───────────────────────────────────────────────────────────────────
+  // POST /api/backup starts it on the server; this page asks for the status
+  // every 2 seconds and downloads the file when it's ready (see backup-web.js).
+  function fmtBytes(n) {
+    if (n < 1024) return n + ' bytes';
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+    if (n < 1024 * 1024 * 1024) return (n / 1024 / 1024).toFixed(1) + ' MB';
+    return (n / 1024 / 1024 / 1024).toFixed(2) + ' GB';
+  }
+  function backupSay(text, kind) {
+    const el = document.getElementById('backupMsg');
+    el.textContent = text;
+    el.className = kind || '';
+  }
+  function backupShowJob(job) {
+    const list = document.getElementById('backupSummary');
+    list.replaceChildren(...(job.summary || []).map(t => {
+      const li = document.createElement('li'); li.textContent = t; return li;
+    }));
+    const again = document.getElementById('backupAgain');
+    if (job.ok) {
+      backupSay(`Ready: ${job.name} (${fmtBytes(job.size)}).`, 'ok');
+      again.href = '/api/backup/download?name=' + encodeURIComponent(job.name);
+      again.hidden = false;
+    } else {
+      backupSay(job.error || 'The backup failed.', 'error');
+      again.hidden = true;
+    }
+  }
+  let backupPolling = false;
+  async function backupPoll(download) {
+    if (backupPolling) return;
+    backupPolling = true;
+    const btn = document.getElementById('backupBtn');
+    btn.disabled = true;
+    try {
+      while (true) {
+        await new Promise(r => setTimeout(r, 2000));
+        let s;
+        try { s = await (await fetch('/api/backup/status')).json(); } catch (e) { continue; }
+        if (!s.job) break;
+        if (s.job.running) {
+          backupSay(`Making the backup… ${s.job.elapsed} s (a few minutes on a Pi 3).`);
+          continue;
+        }
+        backupShowJob(s.job);
+        if (download && s.job.ok) {
+          window.location.href = '/api/backup/download?name=' + encodeURIComponent(s.job.name);
+        }
+        break;
+      }
+    } finally {
+      backupPolling = false;
+      btn.disabled = false;
+    }
+  }
+  async function startBackup() {
+    const btn = document.getElementById('backupBtn');
+    btn.disabled = true;
+    document.getElementById('backupSummary').replaceChildren();
+    document.getElementById('backupAgain').hidden = true;
+    backupSay('Starting the backup…');
+    try {
+      const res = await fetch('/api/backup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobs: document.getElementById('backupJobs').checked })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        backupSay(data.error || ('The backup couldn\'t start (' + res.status + ').'), 'error');
+        btn.disabled = false;
+        return;
+      }
+      backupPoll(true);
+    } catch (e) {
+      backupSay('Couldn\'t reach WordLight. Is it running?', 'error');
+      btn.disabled = false;
+    }
+  }
+  async function initBackup() {
+    let s;
+    try {
+      const res = await fetch('/api/backup/status');
+      if (!res.ok) return;
+      s = await res.json();
+    } catch (e) { return; }
+    document.getElementById('backupPanel').hidden = false;
+    if (!s.available) {
+      document.getElementById('backupBtn').disabled = true;
+      backupSay(s.reason, 'error');
+      return;
+    }
+    if (s.converter && s.jobsBytes > 0) {
+      document.getElementById('backupJobsText').textContent =
+        `Include the converter's jobs (${fmtBytes(s.jobsBytes)}: every script sent to it)`;
+      document.getElementById('backupJobsLabel').hidden = false;
+    }
+    if (s.job && s.job.running) backupPoll(false);       // started earlier (another tab?)
+    else if (s.job) backupShowJob(s.job);
+  }
+
   // ── Boot ─────────────────────────────────────────────────────────────────────
   fetchLog();
+  initBackup();
 </script>
 </body>
 </html>

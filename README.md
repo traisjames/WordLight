@@ -10,7 +10,7 @@ audience — the theater name, colors, and logo — is fully configurable per
 installation (see [Branding your installation](#branding-your-installation)
 below); nothing in this project is tied to any specific venue.
 
-**Version 0.9.3.** What changed, version by version: `CHANGES.md`.
+**Version 0.9.4.** What changed, version by version: `CHANGES.md`.
 
 **New to this?** [GETTING_STARTED.md](GETTING_STARTED.md) walks through
 everything from the shopping list to the first show, with no Linux
@@ -29,7 +29,7 @@ knowledge needed.
 | `/help` | Script conventions, keyboard shortcuts, OSC commands | No |
 | `/controller` | Load script, navigate lines, live type, intermission | ✅ Yes |
 | `/editor` | Caption script editor | ✅ Admin or editor login |
-| `/logging` | Unique reader usage stats | ✅ Yes |
+| `/logging` | Unique reader usage stats, and Download a backup | ✅ Yes |
 | `/login` | Admin sign-in | — |
 
 ### API Endpoints
@@ -436,7 +436,7 @@ npm start
 
 You should see:
 ```
-✅ WordLight 0.9.3 server running!
+✅ WordLight 0.9.4 server running!
    HTTPS:    generating self-signed certificate for: 192.168.1.42, 127.0.0.1
    HTTPS:    certificate generated successfully
    Home:     https://192.168.1.xx:3443/home
@@ -611,6 +611,8 @@ still need the admin login, which also opens the editor. Without
 ### Logging (Admin)
 
 Open `/logging` to see unique reader devices, total sessions, and live connection counts. Export as CSV or reset counters.
+
+Its **Backup** panel makes and downloads the same backup file as setup.sh's menu 13 (the Scripts folder, settings without passwords, and the Script Converter, with its jobs if ticked), for whoever can't use a terminal. It doesn't run while anyone is connected, a copy stays on the Pi in `~/WordLight-backups`, and it's restored with setup.sh, menu 13. It needs `python3`, which Raspberry Pi OS and Ubuntu have.
 
 ---
 

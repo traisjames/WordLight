@@ -23,6 +23,7 @@ wordlight/                          ← project root (e.g. /home/wordlight/CC_Se
 ├── FILE_MAP.md                     ← this file
 ├── oled_display.py                 ← OLED screen + buttons (Raspberry Pi only)
 ├── scripts-folder.js               ← the Scripts folder: list, open, save (used by server.js)
+├── backup-web.js                   ← the logging page's "Download a backup" (used by server.js; runs setup/backup_tool.py)
 ├── .gitignore                      ← keeps .env and certs/ out of git
 │
 ├── certs/                          ← AUTO-GENERATED on first run — do not create by hand
@@ -58,7 +59,7 @@ wordlight/                          ← project root (e.g. /home/wordlight/CC_Se
     ├── reader.html                 ← audience captions
     ├── backstage.html              ← actor monitor with notes
     ├── preferences.html            ← reader display settings
-    ├── logging.html                ← usage statistics
+    ├── logging.html                ← usage statistics, and Download a backup
     ├── help.html                   ← conventions + shortcuts
     ├── favicon.png                 ← YOUR theater's icon
     ├── iconlarge.png               ← YOUR theater's logo
@@ -95,6 +96,7 @@ Only these belong at the root:
 | `package.json` | `styles.css` |
 | `oled_display.py` | `favicon.png`, `iconlarge.png` |
 | `scripts-folder.js` | `scripts-picker.js` |
+| `backup-web.js` | |
 | `.gitignore` | `fonts/` |
 | `*.md` documentation | |
 

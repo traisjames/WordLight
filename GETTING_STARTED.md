@@ -651,6 +651,10 @@ the drive when it's done. **Passwords are never in a backup**, so a lost
 flash drive gives nobody your logins. Keep backups private anyway: they hold
 your show scripts and caption files.
 
+No terminal needed for a backup: sign in to the **Logging** page
+(`/logging`, the admin login) and use **Make and download a backup**. It
+makes the same file and downloads it to your laptop (a copy stays on the Pi).
+
 **Restoring:** option 13 again, then **Restore from a backup**. It checks
 the backup first, then asks about each part before changing anything:
 
