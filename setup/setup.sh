@@ -422,6 +422,33 @@ do_wifi_country() {
 
 # ── Start on boot ────────────────────────────────────────────────────────
 
+# The OLED's K4 button (held 3 s) reboots the Pi with  sudo /sbin/reboot.
+# pm2 runs it with no terminal, so sudo can't ask for a password and the
+# reboot fails. This rule lets this login run exactly that one command
+# without a password, nothing else. visudo checks it before it goes in,
+# so a mistake here can't break sudo.
+REBOOT_RULE_FILE=/etc/sudoers.d/wordlight-reboot
+do_reboot_rule() {
+  local want tmp
+  want="$ME ALL=(root) NOPASSWD: /sbin/reboot"
+  if sudo grep -qxF "$want" "$REBOOT_RULE_FILE" 2>/dev/null; then
+    ok "Holding K4 on the OLED can reboot the Pi (already set up)."; return 0
+  fi
+  if [ ! -x /sbin/reboot ]; then
+    warn "This computer has no /sbin/reboot, so holding K4 on the OLED can't reboot it."; return 1
+  fi
+  tmp=$(mktemp)
+  printf '# Lets the WordLight OLED display reboot the Pi (K4 held 3 s).\n# Made by WordLight setup.sh; only this one command, nothing else.\n%s\n' "$want" > "$tmp"
+  if sudo visudo -cqf "$tmp" && sudo install -m 0440 -o root -g root "$tmp" "$REBOOT_RULE_FILE" \
+     && sudo visudo -cq; then
+    ok "Holding K4 on the OLED can now reboot the Pi (sudo allows only the reboot command)."
+  else
+    sudo visudo -cq 2>/dev/null || sudo rm -f "$REBOOT_RULE_FILE"
+    warn "Couldn't add the reboot rule. Holding K4 will show the countdown, then \"Reboot failed\"."
+  fi
+  rm -f "$tmp"
+}
+
 boot_start_on() { systemctl is-enabled --quiet "pm2-$ME" 2>/dev/null; }
 
 do_boot_start() {   # do_boot_start on|off
@@ -692,8 +719,33 @@ do_converter() {
     "$CONV_VENV/bin/pip" install -q -r "$CONV_DIR/requirements.txt" \
       || { warn "pip install failed. It needs the internet once, or a wheels/ folder in the zip."; conv_rollback; return 1; }
   fi
-  info "Running the converter's self-tests (a minute or two on a Pi)..."
-  answer=$( cd "$CONV_DIR" && "$CONV_VENV/bin/python3" convert.py selftest 2>&1 | grep -E '^(Ran |OK|FAILED)' | tr '\n' ' ')
+  info "Running the converter's self-tests (about 8 minutes on a Pi 3, less on newer Pis)..."
+  # Run them in the background with one line per test (-v) going to a log,
+  # and show "N of TOTAL tests (P%)" from how many lines have finished.
+  # The test lines themselves are never shown, only counted.
+  local st_log st_total st_done st_pid st_pct
+  st_log=$(mktemp)
+  st_total=$( cd "$CONV_DIR" && "$CONV_VENV/bin/python3" -c \
+    'import unittest; print(unittest.defaultTestLoader.discover("tests", top_level_dir=".").countTestCases())' 2>/dev/null )
+  [[ "$st_total" =~ ^[0-9]+$ ]] || st_total=0
+  ( cd "$CONV_DIR" && "$CONV_VENV/bin/python3" convert.py selftest -v >"$st_log" 2>&1 ) &
+  st_pid=$!
+  while kill -0 "$st_pid" 2>/dev/null; do
+    if [ -t 1 ]; then
+      st_done=$(grep -cE '(^|\.\.\. )(ok|FAIL|ERROR|skipped|expected failure|unexpected success)' "$st_log")
+      if [ "$st_total" -gt 0 ]; then
+        st_pct=$(( st_done * 100 / st_total )); [ "$st_pct" -gt 99 ] && st_pct=99
+        printf '\r   %d of %d tests (%d%%)  ' "$st_done" "$st_total" "$st_pct"
+      else
+        printf '\r   %d tests done  ' "$st_done"
+      fi
+    fi
+    sleep 2
+  done
+  wait "$st_pid"
+  [ -t 1 ] && printf '\r\033[K'
+  answer=$(grep -E '^(Ran |OK|FAILED)' "$st_log" | tr '\n' ' ')
+  rm -f "$st_log"
   if [[ "$answer" == *OK* ]]; then ok "Self-tests: $answer"; else warn "Self-tests: ${answer:-no result}"; fi
 
   mkdir -p "$CONV_SETTINGS" "$CONV_JOBS"
@@ -1228,6 +1280,7 @@ if is_pi; then
     mark_done "oled-python-deps-installed"
     ok "OLED Python packages installed."
   fi
+  step_done "wants-oled" && do_reboot_rule
 elif ! step_done "oled-choice-made"; then
   mark_done "oled-choice-made"   # not a Raspberry Pi: no OLED
 fi

@@ -12,6 +12,8 @@ certs/
 # ── Generated / installed — never commit ─────────────────────────────────────
 node_modules/
 load-test/node_modules/
+# Python's compiled copies of oled_display.py
+__pycache__/
 
 # ── Logs ─────────────────────────────────────────────────────────────────────
 *.log

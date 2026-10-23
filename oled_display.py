@@ -8,8 +8,8 @@ Shows the server IP address and a scannable QR code for the current page.
 Pressing K1 cycles through pages (Home, Reader, Backstage).
 A short press of K4 wakes the screen; it auto-off after SCREEN_TIMEOUT
 seconds. HOLDING K4 for 3 seconds reboots the whole Raspberry Pi — see
-"Reboot setup" below, this requires a one-time sudoers configuration
-step or it will fail with a clear error shown on the OLED itself.
+"Reboot setup" below: it needs a sudoers rule, which setup.sh adds,
+or it fails with a clear error shown on the OLED itself.
 
 ── Libraries used ────────────────────────────────────────────────────────────
 
@@ -52,26 +52,23 @@ step or it will fail with a clear error shown on the OLED itself.
 ── Reboot setup (required for holding K4 to work) ─────────────────────────────
 
   This script normally runs as a regular (non-root) user under pm2, which
-  cannot reboot the system on its own — `sudo reboot` would otherwise sit
-  waiting for a password that never comes, since nothing is there to type
-  it. A one-time sudoers rule grants passwordless permission for ONLY the
-  reboot command specifically — not broad sudo access — to whichever user
-  actually runs this script (replace "wordlight" below if yours differs):
+  cannot reboot the system on its own — `sudo reboot` would otherwise wait
+  for a password that never comes, since nothing is there to type it. A
+  sudoers rule grants passwordless permission for ONLY the reboot command
+  — not broad sudo access — to the user that runs this script.
 
-    sudo visudo -f /etc/sudoers.d/wordlight-reboot
+  setup/setup.sh adds that rule when you set up the OLED display (the file
+  /etc/sudoers.d/wordlight-reboot). On a computer set up before it did
+  that, run ./setup.sh and choose "Run the full setup again": finished
+  steps are skipped and the rule is added. By hand, it is this one line,
+  added with  sudo visudo -f /etc/sudoers.d/wordlight-reboot  (use your
+  own user name in place of "wordlight"):
 
-  Add this single line, then save and exit (visudo checks the syntax
-  before saving, so a typo here can't accidentally lock out sudo entirely):
+    wordlight ALL=(root) NOPASSWD: /sbin/reboot
 
-    wordlight ALL=(ALL) NOPASSWD: /sbin/reboot
-
-  If /sbin/reboot doesn't exist on your system, check with `which reboot`
-  first and use whatever path it reports instead (commonly /usr/sbin/reboot
-  on some distributions).
-
-  Without this step, holding K4 for 3 seconds will show a clear
-  "Reboot failed" message on the OLED rather than silently doing nothing —
-  but the reboot itself won't actually happen until this is set up.
+  Without it, holding K4 for 3 seconds shows a clear "Reboot failed"
+  message on the OLED rather than silently doing nothing — but the reboot
+  itself won't happen until the rule is there.
 
 ── GPIO pin notes ───────────────────────────────────────────────────────────
 
@@ -867,9 +864,9 @@ def trigger_reboot():
         draw   = ImageDraw.Draw(canvas)
         font   = ImageFont.load_default()
         draw.text((2, 10),  'Reboot failed:',        font=font, fill=1)
-        draw.text((2, 24),  'sudo not configured?',  font=font, fill=1)
-        draw.text((2, 38),  'See file header for',   font=font, fill=1)
-        draw.text((2, 48),  'sudoers setup steps.',  font=font, fill=1)
+        draw.text((2, 24),  'sudo not set up.',      font=font, fill=1)
+        draw.text((2, 38),  'Run setup.sh again',    font=font, fill=1)
+        draw.text((2, 48),  '(full setup).',         font=font, fill=1)
         device.display(canvas)
 
 
