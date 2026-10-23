@@ -1,3 +1,94 @@
+# WordLight 0.9.2: setup.sh: log rotation, OLED reboot, theater name in the menu (2026-10-22)
+
+Built on the GitHub copy at commit 5851154 (0.9.1). The changes were
+committed as c7ffa9f ("Work on the OLED display") and 55abd59 ("Change how
+logs are managed"); this entry and the version number came last.
+
+## Files (same folders as the repo)
+
+| File | Goes to | New or changed |
+|---|---|---|
+| `setup/setup.sh` | setup/ | changed: self-test progress, OLED reboot rule, menu 3 (theater name and support email), log rotation |
+| `oled_display.py` | project root | changed: comments, and the "Reboot failed" screen points to setup.sh |
+| `ecosystem.config.js` | project root | changed: comments only (where the logs go, log rotation) |
+| `.gitignore` | project root | changed: ignores `__pycache__/` |
+| `gitignore.txt` | project root | deleted: an old copy of `.gitignore` |
+| `package.json`, `package-lock.json` | project root | changed: version 0.9.2 |
+| `README.md`, `GETTING_STARTED.md`, `CHANGES.md` | project root | changed |
+
+No new npm packages. On a computer set up with an older setup.sh: update
+WordLight (menu 10), then choose **12) Run the full setup again** once.
+Finished steps are skipped, and it adds the log rotation rule and, where
+the OLED display was set up, the reboot rule.
+
+## What changed
+
+**Log rotation.** WordLight, the OLED display and the Script Converter log
+to `/tmp`, and on Raspberry Pi OS Trixie `/tmp` is in memory (checked on
+the Playhouse Pi: a tmpfs of up to 452 MB, half its RAM), so a log that
+keeps growing used memory until the next reboot. Setup's new "Log
+rotation" step adds `/etc/logrotate.d/wordlight` for the system's own
+logrotate, which already runs once a day: each of those logs, and pm2's
+`~/.pm2/pm2.log`, is compressed and emptied once it passes 10 MB, and the 7
+newest old copies are kept. It empties the log in place, so pm2 keeps
+writing without a restart. The rule is checked with logrotate's dry run
+before it goes in. No extra process runs for it, which is why it isn't
+pm2's pm2-logrotate module (one more process using memory on a 1 GB Pi,
+and it needs the internet to install). The README's "Reducing SD Card
+Wear" section said Raspberry Pi OS keeps `/tmp` on the SD card, which is no
+longer true on Trixie; it now says how to check (`findmnt /tmp`) and keeps
+the `/etc/fstab` line for Bookworm and Ubuntu.
+
+**Holding K4 on the OLED reboots the Pi again on a fresh install.** The
+OLED script reboots with `sudo /sbin/reboot`, and under pm2 there is no
+terminal for sudo to ask for a password, so it showed "Reboot failed"
+unless a sudoers rule had been added by hand. The OLED step now adds
+`/etc/sudoers.d/wordlight-reboot`, one line letting this login run
+`/sbin/reboot` and nothing else without a password. `visudo` checks it
+before it goes in, and if the whole sudoers setup then fails its check,
+the file is taken out again. The "Reboot failed" screen now says to run
+setup.sh again.
+
+**Menu option 3: Theater name and support email.** Both used to be set
+once at install and then only by editing `public/global.js` by hand. The
+menu asks for both, with Enter keeping what's there and `-` removing the
+email. The install's branding step uses the same code. An email that
+doesn't look like an address is asked again (before, a typo was written
+as it was). The other menu options move down one: Update WordLight is now
+10, and Run the full setup again is 12.
+
+**The converter's self-tests show progress.** The message said "a minute
+or two on a Pi"; on the Playhouse's Pi 3 they took 8 minutes (481 s for
+398 tests). It now says "about 8 minutes on a Pi 3, less on newer Pis",
+and a line under it counts "N of 398 tests (P%)" while they run. The
+tests' own lines are only counted, never shown (a failing test can print
+script text), and the line is skipped when the output isn't a terminal.
+The final "Ran 398 tests ... OK" line is the same as before.
+
+## Tested
+
+On the Ubuntu test VM, each piece on its own (that VM isn't a Pi, so the
+OLED step doesn't run there):
+
+- **Self-tests** against Script Converter 0.7.28, in a terminal: the count
+  climbed to 398 of 398 and the line cleared before the result. With
+  output to a file: no progress lines.
+- **Reboot rule:** the first run added it (0440 root:root, `visudo -c`
+  OK), the second said "already set up", and `sudo -l` lists only
+  `/sbin/reboot` without a password, with everything else still asking
+  for one. (The test tool refuses any command naming the reboot command,
+  so actually running it was never tried.)
+- **Menu option 3**, against a copy of `global.js`: Enter twice changed
+  nothing; a name with an apostrophe, double quotes and "&" was written
+  escaped and read back exactly; a bad email was asked again; `-` removed
+  the email; `node --check` passed after each change. The install path on
+  the repo's own `global.js` gave "My Theater" and no email.
+- **Log rotation:** the first run added the rule, the second said
+  "already set up", the dry run was clean, and with the WordLight log
+  padded to 11 MB a real run turned it into a 28 KB compressed copy
+  (owned by the login, not root) and emptied the log in place (same
+  file), leaving the small logs alone.
+
 # GETTING_STARTED.md: the beginner guide (2026-10-20)
 
 Built on the GitHub copy at commit 5c6fe10 (0.9.1). Documentation only:

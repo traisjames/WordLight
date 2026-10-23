@@ -10,7 +10,7 @@ audience — the theater name, colors, and logo — is fully configurable per
 installation (see [Branding your installation](#branding-your-installation)
 below); nothing in this project is tied to any specific venue.
 
-**Version 0.9.1.** What changed, version by version: `CHANGES.md`.
+**Version 0.9.2.** What changed, version by version: `CHANGES.md`.
 
 **New to this?** [GETTING_STARTED.md](GETTING_STARTED.md) walks through
 everything from the shopping list to the first show, with no Linux
@@ -434,7 +434,7 @@ npm start
 
 You should see:
 ```
-✅ WordLight 0.9.1 server running!
+✅ WordLight 0.9.2 server running!
    HTTPS:    generating self-signed certificate for: 192.168.1.42, 127.0.0.1
    HTTPS:    certificate generated successfully
    Home:     https://192.168.1.xx:3443/home
