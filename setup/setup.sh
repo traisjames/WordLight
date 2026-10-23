@@ -337,6 +337,64 @@ PY
 # SETTINGS (used by both the full install and the menu)
 # ═══════════════════════════════════════════════════════════════════════════
 
+# ── Theater name and support email ───────────────────────────────────────
+# Two lines near the top of public/global.js. Used by the full install and
+# by the menu (where Enter keeps what's there now).
+
+get_js_const() {   # get_js_const NAME   prints the line's value, or nothing
+  python3 - "$PROJECT_DIR/public/global.js" "$1" 2>/dev/null <<'PY'
+import ast, re, sys
+path, name = sys.argv[1:3]
+m = re.search(r"^const " + re.escape(name) + r""" = ('(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*");""",
+              open(path, encoding="utf-8").read(), re.M)
+if m:
+    print(ast.literal_eval(m.group(1)))
+PY
+}
+
+do_branding() {   # do_branding install|menu
+  local mode="$1" cur_name cur_email name email
+  cur_name=$(get_js_const THEATER_NAME)
+  cur_email=$(get_js_const SUPPORT_EMAIL)
+
+  echo "The theater name appears on the audience reader screen's welcome message."
+  if [ "$mode" = install ] && { [ -z "$cur_name" ] || [ "$cur_name" = "Your Theater Name" ]; }; then
+    cur_name="My Theater"
+  fi
+  name=$(prompt_with_default "Your theater's name" "$cur_name")
+  if [ "$mode" = menu ] && [ "$name" = "$cur_name" ]; then
+    ok "Theater name unchanged: \"$name\"."
+  else
+    set_js_const THEATER_NAME "$name" && ok "Theater name set to \"$name\"."
+  fi
+
+  echo ""
+  echo "Optionally, an email address for people needing help with this system."
+  echo "It appears as a link on the home page, which ANYONE who scans your QR"
+  echo "code can reach — so use an address you're happy for audience members"
+  echo "to see. Leave blank to show no contact link at all."
+  [ "$mode" = menu ] && [ -n "$cur_email" ] && echo "Press Enter to keep it, or type  -  to remove it."
+  while true; do
+    if [ "$mode" = install ]; then
+      email=$(prompt_with_default "Support email (optional)" "")
+    else
+      email=$(prompt_with_default "Support email (optional)" "$cur_email")
+      [ "$email" = "-" ] && email=""
+    fi
+    [ -z "$email" ] || [[ "$email" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$ ]] && break
+    warn "\"$email\" doesn't look like an email address. Try again (Enter for $( [ "$mode" = menu ] && [ -n "$cur_email" ] && echo 'no change' || echo 'none'))."
+  done
+  if [ "$mode" = menu ] && [ "$email" = "$cur_email" ]; then
+    if [ -n "$email" ]; then ok "Support email unchanged: \"$email\"."
+    else ok "Still no support email: the contact link stays hidden."; fi
+    return 0
+  fi
+  if set_js_const SUPPORT_EMAIL "$email"; then
+    if [ -n "$email" ]; then ok "Support email set to \"$email\"."
+    else ok "No support email set — the contact link will stay hidden."; fi
+  fi
+}
+
 # ── Time zone ────────────────────────────────────────────────────────────
 
 do_timezone() {
@@ -447,6 +505,54 @@ do_reboot_rule() {
     warn "Couldn't add the reboot rule. Holding K4 will show the countdown, then \"Reboot failed\"."
   fi
   rm -f "$tmp"
+}
+
+# ── Log rotation ──────────────────────────────────────────────────────────
+# WordLight, the OLED display and the Script Converter log to /tmp (see
+# ecosystem.config.js), and pm2 itself to ~/.pm2/pm2.log. On Raspberry Pi OS
+# Trixie (and Debian 13) /tmp is in memory, so a log that keeps growing uses
+# up RAM until the next reboot. This rule has the system's own logrotate
+# (already installed; it runs once a day) keep each log under 10 MB, with
+# the 7 newest old copies compressed. No extra process runs for it.
+LOGROTATE_FILE=/etc/logrotate.d/wordlight
+do_logrotate() {
+  local tmp rdir rc=0
+  if ! command -v logrotate >/dev/null && [ ! -x /usr/sbin/logrotate ]; then
+    info "Installing logrotate..."
+    sudo apt-get install -y -qq logrotate >/dev/null \
+      || { warn "Couldn't install logrotate (needs the internet). Logs won't be trimmed until it's there: run the full setup again when online."; return 1; }
+  fi
+  tmp=$(mktemp)
+  cat > "$tmp" <<EOF
+# WordLight's logs. Made by WordLight setup.sh ("Run the full setup again"
+# rewrites it). Checked once a day: a log over 10 MB is compressed and
+# emptied (pm2 keeps writing to it); the 7 newest old copies are kept.
+/tmp/wordlight-out.log /tmp/wordlight-error.log /tmp/oled-display-out.log /tmp/oled-display-error.log /tmp/script-converter.log $HOME/.pm2/pm2.log {
+    su $ME $ME
+    size 10M
+    rotate 7
+    compress
+    missingok
+    notifempty
+    copytruncate
+}
+EOF
+  if sudo cmp -s "$tmp" "$LOGROTATE_FILE"; then
+    rm -f "$tmp"; ok "Log rotation is set up (already)."; return 0
+  fi
+  # logrotate ignores a rule file root doesn't own, so check a root-owned copy
+  rdir=$(sudo mktemp -d)
+  if [ -n "$rdir" ] && sudo install -m 0644 -o root -g root "$tmp" "$rdir/wordlight" \
+     && sudo logrotate -d "$rdir/wordlight" >/dev/null 2>&1 \
+     && sudo install -m 0644 -o root -g root "$tmp" "$LOGROTATE_FILE"; then
+    ok "Log rotation set up: each log kept under 10 MB, 7 old copies (checked once a day)."
+  else
+    warn "Couldn't set up log rotation. Logs will grow until the next reboot clears /tmp."
+    rc=1
+  fi
+  [ -n "$rdir" ] && sudo rm -rf "$rdir"
+  rm -f "$tmp"
+  return $rc
 }
 
 boot_start_on() { systemctl is-enabled --quiet "pm2-$ME" 2>/dev/null; }
@@ -1067,22 +1173,26 @@ maintenance_menu() {
     echo ""
     echo "  1) Status"
     echo "  2) System settings (time zone, computer name, Wi-Fi country, start on boot, password)"
-    echo "  3) Network shares (Samba): set up again"
-    echo "  4) Reset a Samba password"
-    echo "  5) Scripts folder"
-    echo "  6) Editor login"
-    echo "  7) Script Converter: install or update"
-    echo "  8) Offline caption network: answer devices' internet checks"
-    echo "  9) Update WordLight"
-    echo "  10) Reset the WordLight admin password"
-    echo "  11) Run the full setup again (safe — finished steps are skipped)"
+    echo "  3) Theater name and support email"
+    echo "  4) Network shares (Samba): set up again"
+    echo "  5) Reset a Samba password"
+    echo "  6) Scripts folder"
+    echo "  7) Editor login"
+    echo "  8) Script Converter: install or update"
+    echo "  9) Offline caption network: answer devices' internet checks"
+    echo "  10) Update WordLight"
+    echo "  11) Reset the WordLight admin password"
+    echo "  12) Run the full setup again (safe — finished steps are skipped)"
     echo "  0) Exit"
     local choice; read -rp "Choose: " choice
     case "$choice" in
       1) show_status; pause_for_enter ;;
       2) system_menu ;;
-      3) do_samba_shares; pause_for_enter ;;
-      4)
+      3) do_branding menu
+         info "Reload any open WordLight pages to see the change."
+         pause_for_enter ;;
+      4) do_samba_shares; pause_for_enter ;;
+      5)
         local who; who=$(prompt_with_default "Which Samba account ($ME or WordMaker)?" "$ME")
         if [ "$who" = "$ME" ] || [ "$who" = WordMaker ]; then
           sudo smbpasswd "$who" && ok "Samba password updated for $who."
@@ -1090,20 +1200,20 @@ maintenance_menu() {
           warn "Only $ME and WordMaker have Samba accounts here."
         fi
         pause_for_enter ;;
-      5) do_scripts_folder && restart_wordlight
+      6) do_scripts_folder && restart_wordlight
          systemctl is-active --quiet smbd 2>/dev/null && prompt_yes_no "Point the network share at it too?" "y" && do_samba_shares
          pause_for_enter ;;
-      6) do_editor_login && restart_wordlight; pause_for_enter ;;
-      7) do_converter; pause_for_enter ;;
-      8) do_connectivity ;;
-      9)
+      7) do_editor_login && restart_wordlight; pause_for_enter ;;
+      8) do_converter; pause_for_enter ;;
+      9) do_connectivity ;;
+      10)
         if do_update_wordlight; then
           # This setup.sh may have been updated too: start the menu again from the new one
           pause_for_enter; exec bash "$SETUP_DIR/setup.sh"
         fi
         pause_for_enter ;;
-      10) do_admin_password && restart_wordlight; pause_for_enter ;;
-      11)
+      11) do_admin_password && restart_wordlight; pause_for_enter ;;
+      12)
         info "Re-running full setup — already-completed steps will be skipped."
         return 1 ;;   # signal: fall through to the full install flow below
       0|"") echo "No changes made."; return 0 ;;
@@ -1290,23 +1400,7 @@ fi
 step "Theater branding"
 
 if ! step_done "theater-name-set"; then
-  echo "This name appears on the audience reader screen's welcome message."
-  THEATER_NAME=$(prompt_with_default "Your theater's name" "My Theater")
-  set_js_const THEATER_NAME "$THEATER_NAME" && ok "Theater name set to \"$THEATER_NAME\"."
-
-  echo ""
-  echo "Optionally, an email address for people needing help with this system."
-  echo "It appears as a link on the home page, which ANYONE who scans your QR"
-  echo "code can reach — so use an address you're happy for audience members"
-  echo "to see. Leave blank to show no contact link at all."
-  SUPPORT_EMAIL=$(prompt_with_default "Support email (optional)" "")
-  if set_js_const SUPPORT_EMAIL "$SUPPORT_EMAIL"; then
-    if [ -n "$SUPPORT_EMAIL" ]; then
-      ok "Support email set to \"$SUPPORT_EMAIL\"."
-    else
-      ok "No support email set — the contact link will stay hidden."
-    fi
-  fi
+  do_branding install
 
   echo ""
   info "Logo and icon: replace public/favicon.png and public/iconlarge.png"
@@ -1509,6 +1603,11 @@ if is_pi && ! step_done "power-report-installed"; then
   fi
   mark_done "power-report-installed"
 fi
+
+# ── Step: Log rotation ────────────────────────────────────────────────────
+
+step "Log rotation"
+do_logrotate
 
 # ── Step: Start WordLight with pm2 ────────────────────────────────────────
 

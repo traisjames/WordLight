@@ -481,71 +481,69 @@ trying it at all.
 
 SD cards have a limited number of write cycles before they wear out — a
 real concern for a Pi that runs continuously across many show nights.
-Two independent things help with this, and `ecosystem.config.js` is
-already set up for both:
+Two independent things help with this. `setup/setup.sh` does the first,
+and on Raspberry Pi OS Trixie the second is already the default:
 
 ### 1. Log rotation
 
-Without rotation, pm2's log files grow forever. Install and configure
-the official rotation module:
+`setup/setup.sh` sets this up (its "Log rotation" step; on a computer set
+up before it did, choose **Run the full setup again** in its menu). It
+uses the system's own `logrotate`, which Raspberry Pi OS and Ubuntu
+already have and run once a day, with one rule file,
+`/etc/logrotate.d/wordlight`: WordLight's, the OLED display's and the
+Script Converter's logs in `/tmp`, and pm2's own `~/.pm2/pm2.log`, are each
+compressed and emptied once they pass 10 MB, and the 7 newest old copies
+are kept. No extra process runs for it. To see what it would do:
 
 ```bash
-pm2 install pm2-logrotate
-pm2 set pm2-logrotate:max_size 10M
-pm2 set pm2-logrotate:retain 7
-pm2 set pm2-logrotate:compress true
+sudo logrotate -d /etc/logrotate.d/wordlight
 ```
 
-This keeps at most 7 rotated (and compressed) log files per process,
-each capped at 10MB, automatically — no further action needed.
+(pm2's `pm2-logrotate` module would also work, but it runs as one more
+process the whole time, using memory a 1 GB Pi needs, and needs the
+internet to install.)
 
-### 2. Moving logs to RAM (`/tmp`)
+### 2. Logs in memory (`/tmp`)
 
-`ecosystem.config.js` already points both processes' logs at `/tmp`
-instead of the default `~/.pm2/logs/`. **This only actually avoids SD
-card writes if `/tmp` is RAM-backed** — and on Raspberry Pi OS, unlike
-many other Linux distributions, **it is not RAM-backed by default.**
-Without the extra step below, `/tmp` is just an ordinary folder on the
-SD card like any other, so writes there still wear the card the same as
-anywhere else — the ecosystem file alone doesn't achieve anything on
-its own.
-
-To actually make `/tmp` RAM-backed, add this line to `/etc/fstab`:
+`ecosystem.config.js` points the logs at `/tmp` instead of the default
+`~/.pm2/logs/`. That only avoids SD card writes if `/tmp` is in memory (a
+`tmpfs`). Check with:
 
 ```bash
-sudo nano /etc/fstab
+findmnt /tmp
 ```
 
-```
-tmpfs /tmp tmpfs defaults,noatime,size=100m 0 0
-```
+It shows `tmpfs` when `/tmp` is in memory, and nothing when it's on the SD
+card.
 
-Then either reboot, or apply it immediately with:
+- **Raspberry Pi OS Trixie** (and other Debian 13 systems): `/tmp` is
+  already in memory, up to half the RAM (about 450 MB on a 1 GB Pi 3).
+  Nothing to do. This is also why log rotation matters: a log that keeps
+  growing uses memory until the next reboot.
+- **Raspberry Pi OS Bookworm and older, and Ubuntu:** `/tmp` is on the SD
+  card (or disk). To move it into memory, add this line to `/etc/fstab`:
 
-```bash
-sudo mount -a
-```
+  ```bash
+  sudo nano /etc/fstab
+  ```
 
-Verify it worked:
+  ```
+  tmpfs /tmp tmpfs defaults,noatime,size=100m 0 0
+  ```
 
-```bash
-df -h /tmp
-```
+  Then reboot, or apply it at once with `sudo mount -a`, and check with
+  `findmnt /tmp` again. The `size=100m` caps how much memory it can use.
 
-You should see `tmpfs` listed as the filesystem type for `/tmp`, not
-your SD card's device name.
-
-> **Trade-off worth knowing:** once `/tmp` is RAM-backed, its contents —
+> **Trade-off worth knowing:** once `/tmp` is in memory, its contents —
 > including these logs — are cleared on every reboot. That's fine for
 > this use case (logs are mainly useful for live debugging during a
 > show, not long-term history), but if something crashes right before a
 > planned reboot, those specific logs won't survive to be inspected
-> afterward. The `size=100m` cap also means logs can't consume more than
-> 100MB of RAM even if rotation were somehow misconfigured.
+> afterward.
 
-If you'd rather not set up `tmpfs`, everything still works exactly the
-same — logs simply stay on the SD card at `/tmp`, and you still get the
-benefit of log rotation from step 1 above.
+If `/tmp` stays on the SD card, everything still works exactly the same —
+the logs are simply written to the card, and log rotation still keeps
+them small.
 
 ---
 
@@ -657,7 +655,9 @@ const THEATER_NAME = 'Your Theater Name Here';
 
 This appears on the reader welcome screen and preloader. It's the only
 place the name needs to be set — every page that uses it pulls from this
-one constant.
+one constant. `setup/setup.sh` sets it during installation, and its menu
+option **3) Theater name and support email** changes it (and
+`SUPPORT_EMAIL`, the optional contact link on the home page) later.
 
 **2. Icons and logo** — replace these two files in `public/` with your own
 theater's artwork, keeping the same filenames:

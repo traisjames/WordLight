@@ -507,18 +507,16 @@ The easiest way is over the **CC Server** network share (see
 [Network shares](#network-shares)): open its `public` folder and drag your
 files in. Reload the pages to see them.
 
-**Theater name or support email:** the setup sets these once. To change
-them later, edit the two lines near the top of `public/global.js`:
+**Theater name or support email:** the setup asks for these once. To
+change them later, run `./setup.sh` again and choose **3) Theater name and
+support email**: press Enter to keep what's there, or type a new one (for
+the email, `-` removes it). Reload the pages to see the change.
 
-```bash
-nano ~/wordlight/public/global.js
-```
-
-Change only the text between the quote marks on the `THEATER_NAME` or
-`SUPPORT_EMAIL` line, save (Ctrl+O, Enter) and leave (Ctrl+X). Reload the
-pages. If a page then stops working, the quote marks were probably
-changed: `node --check ~/wordlight/public/global.js` names the line with
-the problem.
+They are two lines near the top of `public/global.js`, so they can also be
+edited by hand. Change only the text between the quote marks on the
+`THEATER_NAME` or `SUPPORT_EMAIL` line. If a page then stops working, the
+quote marks were probably changed: `node --check
+~/wordlight/public/global.js` names the line with the problem.
 
 Updates (see [step 10](#10-later-on-the-setup-menu)) keep your logo,
 your name and your settings.
@@ -625,26 +623,28 @@ Once WordLight is installed, it shows a menu instead of the full install:
 |---|---|
 | 1) Status | The Pi's health, what's running, who's connected, and every port with its address |
 | 2) System settings | Time zone, computer name, Wi-Fi country, start on boot, your login password |
-| 3) Network shares | Set the shares up again |
-| 4) Reset a Samba password | For your login or `WordMaker` |
-| 5) Scripts folder | Move or rename it |
-| 6) Editor login | Add one, or change its name or password |
-| 7) Script Converter | Install or update it |
-| 8) Offline caption network | Set it up, test it or remove it |
-| 9) Update WordLight | From the internet, or from a zip on the Pi |
-| 10) Reset the WordLight admin password | |
-| 11) Run the full setup again | Asks only the questions not yet answered |
+| 3) Theater name and support email | Change either one, or remove the email |
+| 4) Network shares | Set the shares up again |
+| 5) Reset a Samba password | For your login or `WordMaker` |
+| 6) Scripts folder | Move or rename it |
+| 7) Editor login | Add one, or change its name or password |
+| 8) Script Converter | Install or update it |
+| 9) Offline caption network | Set it up, test it or remove it |
+| 10) Update WordLight | From the internet, or from a zip on the Pi |
+| 11) Reset the WordLight admin password | |
+| 12) Run the full setup again | Asks only the questions not yet answered |
 
 Anything that restarts WordLight, or keeps the Pi busy for minutes,
 refuses while anyone is connected, so the menu can't interrupt a show.
 
-**Updating:** option 9 keeps your settings, passwords, certificate, logo
+**Updating:** option 10 keeps your settings, passwords, certificate, logo
 and theater name.
 
-**Keeping the SD card healthy:** SD cards wear out with writing. Two
-optional steps in [README.md](README.md#reducing-sd-card-wear-optional)
-(log rotation and keeping logs in memory) reduce that for a Pi that runs
-for months.
+**Keeping the SD card healthy:** SD cards wear out with writing. The
+setup already keeps WordLight's logs small (log rotation), and on
+Raspberry Pi OS Trixie the logs live in memory, not on the card.
+[README.md](README.md#reducing-sd-card-wear-optional) explains both, and
+how to move the logs into memory on older systems.
 
 ---
 
