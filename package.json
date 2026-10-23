@@ -1,6 +1,6 @@
 {
   "name": "wordlight",
-  "version": "0.9.2",
+  "version": "0.9.3",
   "description": "WordLight \u2014 live closed caption relay server for theaters, built for Raspberry Pi",
   "main": "server.js",
   "scripts": {

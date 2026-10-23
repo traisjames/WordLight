@@ -34,6 +34,7 @@ wordlight/                          ← project root (e.g. /home/wordlight/CC_Se
 │
 ├── setup/                          ← first-time installation helpers
 │   ├── setup.sh                    ← the installer, then a settings menu (chmod +x)
+│   ├── backup_tool.py              ← makes, checks and restores backup files (setup.sh runs it)
 │   ├── connectivity-check.sh       ← offline caption network: answers devices' "am I online?" checks (chmod +x)
 │   ├── smb.conf.template           ← Samba share config (setup.sh fills in the names)
 │   ├── motd.template               ← login message, full version

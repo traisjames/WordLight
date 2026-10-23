@@ -1,3 +1,93 @@
+# WordLight 0.9.3: setup.sh: back up and restore, to a file or a flash drive (2026-10-23)
+
+Built on the GitHub copy at commit d460f86 (0.9.2).
+
+## Files (same folders as the repo)
+
+| File | Goes to | New or changed |
+|---|---|---|
+| `setup/backup_tool.py` | setup/ | new: makes, checks and restores backup files |
+| `setup/setup.sh` | setup/ | changed: menu 13 (Back up or restore); the Script Converter install can take a folder from a restore |
+| `package.json`, `package-lock.json` | project root | changed: version 0.9.3 |
+| `README.md`, `GETTING_STARTED.md`, `FILE_MAP.md`, `CHANGES.md` | project root | changed |
+
+No new npm packages, and nothing new to install: backups use Python's own
+`tarfile`, and `lsblk` and `mount` come with every Linux. After updating
+(menu 10), the new option is there; nothing needs to be run again.
+
+## What changed
+
+**Menu option 13: Back up or restore.** Options 1-12 keep their numbers.
+
+**Backing up** makes one `.tar.gz` file with what a fresh install can't
+make again: the Scripts folder, WordLight's settings (its `.env` with every
+password and the session secret taken out, the theater name and support
+email, the logos), and the Script Converter's program (its repository is
+private, so a new Pi can't download it) and settings, plus its jobs if
+asked. It goes into `~/WordLight-backups` (chmod 700, on the Wordlight Home
+share) or onto a USB flash drive. Flash drives: setup lists the USB drives
+it finds (never the one the computer starts from), mounts the one chosen at
+`/mnt/wordlight-usb` so this login can write to it (FAT32, exFAT, NTFS or
+ext4; a Mac-only format is refused with a hint to erase it as ExFAT), and
+unmounts it afterwards. A drive that's already mounted (a Pi with the
+desktop does that) is used where it is. The file is written under a
+temporary name, read back all the way through and every file checked
+against the checksums inside it, and only then gets its real name,
+`WordLight-backup-<computer>-<date>-<time>.tar.gz` (a second one in the same
+minute gets `-2`). It warns before a FAT32 drive's 4 GB file limit and when
+there may not be room.
+
+Left out on purpose: every password (the admin and editor passwords, the
+session secret, the converter page's password; the Samba passwords were
+never in a file), so a lost flash drive gives nobody a login and forgotten
+passwords can be replaced at restore. Also left out: symbolic links,
+`__pycache__`/`.git` folders, and files this login can't read, which are
+counted on screen. Only counts and sizes are shown, never file contents.
+
+**Restoring** checks the chosen backup first (from the backups folder, a
+flash drive mounted read-only, or a typed path), then asks about each part
+before anything changes, shows a summary and waits for "Go ahead?":
+
+- Scripts folder: merge (new files added, identical ones skipped, and a
+  file that differs here is kept with the backup's copy added as
+  "Name (2).txt", the editor's rule), replace (the folder becomes exactly
+  the backup), or skip. Files get the folder's usual 0664 / 2775.
+- WordLight settings: lists what differs (ports, user names, the Scripts
+  folder's name, `CONVERTER_URL`, theater name, email, logos) and asks once.
+  `SCRIPTS_DIR` is never copied: it's a path on the other computer.
+- Script Converter: installed from the backup when it isn't here (through
+  the normal install, with its self-tests); a different installed version
+  is only replaced if you say so (default no). Its settings are put back
+  (changed files replaced) and missing jobs added (jobs already here are
+  left alone).
+
+Everything it replaces goes into `~/WordLight-before-restore-<date-time>`
+first (chmod 700), with a copy of `.env`, so a restore can be undone by
+hand. It ends by offering new admin, editor and converter page passwords
+(No keeps the current ones), then restarts the converter and WordLight.
+Both backing up and restoring refuse while anyone is connected to
+WordLight; restoring also refuses while the converter is working on a show.
+
+## Tests (on the test VM, Ubuntu 24.04, WordLight 0.9.1 + these files)
+
+- Backup to `~/WordLight-backups` with jobs (5.4 MB from 11 MB): none of the
+  password values from `.env` anywhere in the file; the link and an
+  unreadable file left out and counted; system `tar` reads it; damaged and
+  cut-short copies fail the check; refused with a fake reader connected.
+- Backup to a FAT32 flash drive: mounted, written, checked, unmounted, then
+  checked again separately from the drive. Already-mounted drive used in
+  place. Two backups in one minute named `…` and `…-2`.
+- Restore, merge: an edited caption file kept and the backup's copy added
+  as "(2)", a deleted one back, a new one kept, `OSC_PORT` and the theater
+  name back, a converter word list back, a moved-away job back identical,
+  a new admin password set.
+- Restore, replace, with no converter installed: Scripts folder identical
+  to the backup, old files in the before-restore folder; converter
+  installed from the backup identical to the original, 398 self-tests OK,
+  both apps running.
+- Restore from the flash drive: mounted read-only, everything recognized
+  as already the same, unmounted.
+
 # WordLight 0.9.2: setup.sh: log rotation, OLED reboot, theater name in the menu (2026-10-22)
 
 Built on the GitHub copy at commit 5851154 (0.9.1). The changes were

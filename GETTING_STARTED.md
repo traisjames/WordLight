@@ -633,12 +633,42 @@ Once WordLight is installed, it shows a menu instead of the full install:
 | 10) Update WordLight | From the internet, or from a zip on the Pi |
 | 11) Reset the WordLight admin password | |
 | 12) Run the full setup again | Asks only the questions not yet answered |
+| 13) Back up or restore | The Scripts folder, settings and Script Converter: to one file here or on a flash drive, and back |
 
 Anything that restarts WordLight, or keeps the Pi busy for minutes,
 refuses while anyone is connected, so the menu can't interrupt a show.
 
 **Updating:** option 10 keeps your settings, passwords, certificate, logo
 and theater name.
+
+**Backing up:** option 13 saves the Scripts folder, WordLight's settings
+(theater name, logos, ports) and the Script Converter (program, settings,
+and its jobs if you choose) into one `.tar.gz` file. It goes in
+`WordLight-backups` in your home folder (the **Wordlight Home** network share)
+or on a USB flash drive: FAT32, exFAT, NTFS or ext4 work, but not a drive
+formatted for Macs only. Setup checks the file after writing it and unmounts
+the drive when it's done. **Passwords are never in a backup**, so a lost
+flash drive gives nobody your logins. Keep backups private anyway: they hold
+your show scripts and caption files.
+
+**Restoring:** option 13 again, then **Restore from a backup**. It checks
+the backup first, then asks about each part before changing anything:
+
+- **Scripts folder:** *merge* (add the backup's files; when a file here is
+  different, both are kept and the backup's copy gets a "(2)" name),
+  *replace* (the folder becomes exactly the backup), or *skip*.
+- **WordLight settings:** it lists what differs (ports, user names, theater
+  name, logos) and asks once. The Scripts folder's location stays this
+  computer's own.
+- **Script Converter:** installs it from the backup if it isn't here (this
+  runs its self-tests, about 8 minutes on a Pi 3), puts back its settings,
+  and adds any jobs that aren't here yet.
+
+Everything it replaces is moved to a `WordLight-before-restore-<date>` folder
+in your home first, so nothing is lost; delete that folder once all looks
+right. Because backups hold no passwords, it ends by offering new admin,
+editor and converter passwords (Enter keeps the current ones). On a new Pi,
+run the full install first, then restore.
 
 **Keeping the SD card healthy:** SD cards wear out with writing. The
 setup already keeps WordLight's logs small (log rotation), and on

@@ -10,7 +10,7 @@ audience — the theater name, colors, and logo — is fully configurable per
 installation (see [Branding your installation](#branding-your-installation)
 below); nothing in this project is tied to any specific venue.
 
-**Version 0.9.2.** What changed, version by version: `CHANGES.md`.
+**Version 0.9.3.** What changed, version by version: `CHANGES.md`.
 
 **New to this?** [GETTING_STARTED.md](GETTING_STARTED.md) walks through
 everything from the shopping list to the first show, with no Linux
@@ -213,8 +213,10 @@ system settings (time zone, computer name, Wi-Fi country on a Pi, start on
 boot, login password), the network shares and Samba passwords, the Scripts
 folder, the editor login, the Script Converter (install or update, from
 git, a zip or a folder), the offline caption network, updating WordLight
-(git, or a zip for a computer with no internet), and resetting the admin
-password. Anything that restarts WordLight, or keeps the computer busy for
+(git, or a zip for a computer with no internet), resetting the admin
+password, and backing up or restoring the Scripts folder, settings and
+Script Converter (to a file or a USB flash drive; passwords are never in a
+backup). Anything that restarts WordLight, or keeps the computer busy for
 minutes, refuses while anyone is connected, so it can't interrupt a show.
 It never changes the network settings (static IP, Wi-Fi networks): a
 mistake there can cut off the connection you're using.
@@ -434,7 +436,7 @@ npm start
 
 You should see:
 ```
-✅ WordLight 0.9.2 server running!
+✅ WordLight 0.9.3 server running!
    HTTPS:    generating self-signed certificate for: 192.168.1.42, 127.0.0.1
    HTTPS:    certificate generated successfully
    Home:     https://192.168.1.xx:3443/home

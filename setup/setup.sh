@@ -725,7 +725,7 @@ do_samba_shares() {
 # Finds the converter's code folder (the one with convert.py) inside $1
 find_converter_root() { find "$1" -maxdepth 3 -name convert.py -path '*/convert.py' -printf '%h\n' 2>/dev/null | head -1; }
 
-do_converter() {
+do_converter() {   # do_converter [FOLDER]   FOLDER: install from there without asking (restore)
   local src="" kind root tmp certargs answer
   if wordlight_in_use; then
     warn "WordLight is in use right now ($WL_NOBODY). Installing the converter keeps"
@@ -737,6 +737,10 @@ do_converter() {
   echo "nobody connected for 30 minutes, or between 1 and 6 am with no controller"
   echo "open, so it never slows a show down."
   echo ""
+  if [ -n "${1:-}" ]; then
+    # From restore: a folder with the converter, already unpacked from a backup
+    kind=3; tmp=$(mktemp -d); root=$(find_converter_root "$1")
+  else
   echo "Where should it come from?"
   echo "  1) Download it with git ($CONV_GIT_DEFAULT, or another address)"
   echo "  2) A zip file already on this computer (for a computer with no internet)"
@@ -780,6 +784,7 @@ do_converter() {
       root="" ;;
     *) warn "Not a valid choice."; rm -rf "$tmp"; return 1 ;;
   esac
+  fi
 
   # Swap the new copy in. The old one stays as .previous until this install
   # has finished; if anything below fails, conv_rollback puts it back.
@@ -1034,6 +1039,568 @@ do_update_wordlight() {
   return 0
 }
 
+# ── Back up ──────────────────────────────────────────────────────────────
+#
+# One .tar.gz file with what a fresh install can't make again: the Scripts
+# folder, WordLight's settings (.env without passwords, theater name, logos),
+# and the Script Converter's program and settings (its jobs if asked). Saved
+# to a folder here or to a flash drive. setup/backup_tool.py builds the file,
+# reads it back and checks every file; this part asks the questions and
+# handles the drive. Passwords are left out on purpose: a restore asks for
+# new ones, so forgotten passwords don't come back with it.
+
+BACKUP_TOOL="$SETUP_DIR/backup_tool.py"
+BACKUP_LOCAL_DIR="$HOME/WordLight-backups"
+USB_MOUNT="/mnt/wordlight-usb"
+
+# USB drive partitions that hold a file system, one line each, fields split by
+# the unit separator \x1f (not tabs: read would merge empty fields):
+# device, size, file system, label, where it's mounted now (empty if not).
+# A drive this computer starts from (/ or /boot on it) is never listed.
+usb_partitions() {
+  lsblk -J -b -o NAME,PATH,TYPE,TRAN,SIZE,FSTYPE,LABEL,MOUNTPOINTS 2>/dev/null | python3 -c '
+import json, sys
+try:
+    devs = json.load(sys.stdin).get("blockdevices", [])
+except ValueError:
+    sys.exit(0)
+def size(n):
+    n = float(n or 0)
+    for u in ("B", "KB", "MB", "GB", "TB"):
+        if n < 1000 or u == "TB":
+            return ("%.0f %s" if u in ("B", "KB") else "%.1f %s") % (n, u)
+        n /= 1000
+def mounts(d):
+    return [m for m in (d.get("mountpoints") or []) if m]
+def tree(d):
+    yield d
+    for c in d.get("children") or []:
+        yield from tree(c)
+for disk in devs:
+    if disk.get("type") != "disk" or disk.get("tran") != "usb":
+        continue
+    parts = list(tree(disk))
+    if any(m == "/" or m.startswith("/boot") or m == "[SWAP]" for p in parts for m in mounts(p)):
+        continue
+    for p in parts:
+        if not p.get("fstype") or p.get("fstype") in ("swap", "LVM2_member", "crypto_LUKS"):
+            continue
+        m = mounts(p)
+        print("\x1f".join([p["path"], size(p.get("size")), p["fstype"], (p.get("label") or "").replace("\x1f", " "), m[0] if m else ""]))
+'
+}
+
+# Mounts a USB partition at $USB_MOUNT so this login can write to it.
+# Sets USB_DIR (the backups folder on the drive). Returns 1 with a message
+# when the drive can't be used.
+mount_usb() {   # mount_usb DEVICE FILESYSTEM [ro]   ro: read-only, for restoring
+  local dev="$1" fs="$2" ro="${3:-}" type opts=""
+  case "$fs" in
+    vfat|exfat)  type="$fs"; opts="uid=$(id -u),gid=$(id -g),umask=077" ;;
+    ntfs|ntfs3)  type=ntfs3; opts="uid=$(id -u),gid=$(id -g),umask=077" ;;
+    ext2|ext3|ext4) type="$fs" ;;
+    hfs|hfsplus|apfs)
+      warn "That drive is formatted for Macs ($fs), which Linux can't write to."
+      warn "On a Mac, Disk Utility can erase it as ExFAT (works on Macs, Windows and Linux)."
+      return 1 ;;
+    *) warn "That drive's format ($fs) isn't one this can write to (FAT32, exFAT, NTFS or ext4)."; return 1 ;;
+  esac
+  if mountpoint -q "$USB_MOUNT" 2>/dev/null; then
+    warn "Something is already mounted at $USB_MOUNT. Unmount it first:  sudo umount $USB_MOUNT"
+    return 1
+  fi
+  [ "$ro" = ro ] && opts="${opts:+$opts,}ro"
+  sudo mkdir -p "$USB_MOUNT" || return 1
+  if ! sudo mount -t "$type" ${opts:+-o "$opts"} "$dev" "$USB_MOUNT"; then
+    warn "Couldn't mount the drive ($dev)."
+    [ "$type" = ntfs3 ] && warn "This system may not be able to write NTFS. exFAT or FAT32 always works."
+    return 1
+  fi
+  USB_DIR="$USB_MOUNT/WordLight-backups"
+  [ "$ro" = ro ] && return 0
+  if [ -d "$USB_DIR" ] && [ -w "$USB_DIR" ]; then return 0; fi
+  case "$type" in
+    ext*) sudo install -d -o "$ME" -m 700 "$USB_DIR" ;;
+    *)    mkdir -p "$USB_DIR" ;;
+  esac
+  [ -w "$USB_DIR" ] || { warn "Can't write to the drive."; sudo umount "$USB_MOUNT"; return 1; }
+}
+
+# Is the converter in the middle of a show right now? (from its /api/status)
+converter_running() {
+  local s
+  s=$(curl -s --max-time 3 http://127.0.0.1:8090/api/status 2>/dev/null)
+  [ -n "$s" ] || s=$(curl -sk --max-time 3 https://127.0.0.1:8090/api/status 2>/dev/null)
+  printf '%s' "$s" | python3 -c 'import json, sys
+try: sys.exit(0 if json.load(sys.stdin).get("running") else 1)
+except ValueError: sys.exit(1)' 2>/dev/null
+}
+
+do_backup() {
+  if wordlight_in_use; then
+    warn "WordLight is in use right now ($WL_NOBODY). A backup works the Pi hard for a"
+    warn "while, so it won't run during a show. Try again when nobody is connected."
+    return 1
+  fi
+  [ -f "$BACKUP_TOOL" ] || { warn "setup/backup_tool.py is missing — update WordLight first."; return 1; }
+  step "Back up"
+  echo "A backup is one compressed file (.tar.gz) with the Scripts folder, WordLight's"
+  echo "settings, and the Script Converter's program and settings. Passwords are left"
+  echo "out on purpose: a restore asks for new ones."
+  echo ""
+
+  local tmp sd adds=() a
+  tmp=$(mktemp -d)
+  sd=$(scripts_dir)
+  if [ -d "$sd" ]; then adds+=("scripts=$sd")
+  else warn "There's no Scripts folder at $sd, so the backup won't have caption files."; fi
+  save_branding "$tmp/branding.txt"
+  [ -s "$tmp/branding.txt" ] && adds+=("wordlight/branding.txt=$tmp/branding.txt")
+  for a in "${OWN_FILES[@]}"; do [ -f "$PROJECT_DIR/$a" ] && adds+=("wordlight/own/$a=$PROJECT_DIR/$a"); done
+  local conv_version=""
+  if [ -f "$CONV_DIR/convert.py" ]; then
+    conv_version=$(grep -oE '^VERSION = "[^"]+"' "$CONV_DIR/scriptconv/__init__.py" 2>/dev/null | cut -d'"' -f2)
+    adds+=("converter/code=$CONV_DIR")
+    [ -d "$CONV_SETTINGS" ] && adds+=("converter/settings=$CONV_SETTINGS")
+    if [ -d "$CONV_JOBS" ] && [ -n "$(ls -A "$CONV_JOBS" 2>/dev/null)" ]; then
+      echo "The converter's jobs folder ($(du -sh "$CONV_JOBS" 2>/dev/null | cut -f1)) has every show sent to it: the script"
+      echo "file and the caption files made from it. The finished caption files are"
+      echo "usually in the Scripts folder already."
+      if prompt_yes_no "Include the converter's jobs too?" "n"; then
+        if converter_running; then
+          warn "The converter is working on a show right now: that job could be saved half-done."
+          prompt_yes_no "Include the jobs anyway?" "n" && adds+=("converter/jobs=$CONV_JOBS")
+        else
+          adds+=("converter/jobs=$CONV_JOBS")
+        fi
+      fi
+    fi
+  fi
+
+  # Where to: a folder here, or a flash drive
+  local drives=() line n choice dest how=local dev="" size="" fs="" label="" mnt=""
+  while true; do
+    drives=()
+    while IFS= read -r line; do [ -n "$line" ] && drives+=("$line"); done < <(usb_partitions)
+    echo ""
+    echo "Where should the backup go?"
+    echo "  1) A folder on this computer ($BACKUP_LOCAL_DIR)"
+    n=1
+    for line in "${drives[@]}"; do
+      n=$((n + 1))
+      IFS=$'\x1f' read -r dev size fs label mnt <<<"$line"
+      echo "  $n) Flash drive ${label:+\"$label\" }($dev, $size, $fs${mnt:+, mounted at $mnt})"
+    done
+    [ ${#drives[@]} -eq 0 ] && echo "     (No flash drive found. Plug one in, wait a few seconds, then choose R.)"
+    echo "  R) Look for flash drives again"
+    echo "  0) Cancel"
+    local def=1; [ ${#drives[@]} -eq 1 ] && def=2
+    read -rp "Choose [$def]: " choice; choice=${choice:-$def}
+    case "$choice" in
+      0) rm -rf "$tmp"; echo "No backup made."; return 1 ;;
+      r|R) continue ;;
+      1) how=local; break ;;
+      *)
+        if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 2 ] && [ "$choice" -le "$n" ]; then
+          how=usb; IFS=$'\x1f' read -r dev size fs label mnt <<<"${drives[$((choice - 2))]}"; break
+        fi
+        warn "Not a valid choice." ;;
+    esac
+  done
+
+  local we_mounted=no
+  if [ "$how" = local ]; then
+    mkdir -p "$BACKUP_LOCAL_DIR" && chmod 700 "$BACKUP_LOCAL_DIR" || { warn "Couldn't make $BACKUP_LOCAL_DIR."; rm -rf "$tmp"; return 1; }
+    dest="$BACKUP_LOCAL_DIR"
+  elif [ -n "$mnt" ]; then
+    # Already mounted (by the desktop, or by hand): use it where it is
+    dest="$mnt/WordLight-backups"
+    mkdir -p "$dest" 2>/dev/null
+    [ -w "$dest" ] || { warn "Can't write to $dest on that drive."; rm -rf "$tmp"; return 1; }
+  else
+    mount_usb "$dev" "$fs" || { rm -rf "$tmp"; return 1; }
+    we_mounted=yes; dest="$USB_DIR"
+  fi
+
+  # Enough room? (compressed it's usually smaller, but be safe)
+  local need avail
+  need=$(python3 "$BACKUP_TOOL" size "${adds[@]/#/--add=}")
+  avail=$(df -B1 --output=avail "$dest" 2>/dev/null | tail -1 | tr -d ' ')
+  if [ -n "$need" ] && [ -n "$avail" ] && [ "$avail" -lt $((need + 10 * 1024 * 1024)) ]; then
+    warn "There may not be room: about $((need / 1024 / 1024)) MB to save, $((avail / 1024 / 1024)) MB free there."
+    if ! prompt_yes_no "Try anyway?" "n"; then
+      [ "$we_mounted" = yes ] && sudo umount "$USB_MOUNT"
+      rm -rf "$tmp"; return 1
+    fi
+  fi
+  if [ "$fs" = vfat ] && [ "$how" = usb ] && [ -n "$need" ] && [ "$need" -gt 3900000000 ]; then
+    warn "FAT32 drives can't hold a file over 4 GB, and this backup could be that big."
+    warn "Leaving out the converter's jobs, or an exFAT drive, avoids that."
+  fi
+
+  # Never over an older backup: a second one in the same minute gets -2, -3...
+  local base="WordLight-backup-$(hostname)-$(date +%Y-%m-%d-%H%M)" name k=2
+  name="$base.tar.gz"
+  while [ -e "$dest/$name" ] || [ -e "$dest/$name.partial" ]; do name="$base-$k.tar.gz"; k=$((k + 1)); done
+  info "Making the backup (on a Pi 3 this can take a few minutes)..."
+  local rc=0
+  nice -n 10 python3 "$BACKUP_TOOL" create "$dest/$name" --env "$ENV_FILE" \
+    --info "WordLight=$(wl_version)" ${conv_version:+--info "Script Converter=$conv_version"} \
+    --info "Scripts folder name=$(scripts_name)" "${adds[@]/#/--add=}" || rc=$?
+  rm -rf "$tmp"
+  sync
+  if [ "$we_mounted" = yes ]; then
+    if sudo umount "$USB_MOUNT"; then
+      [ $rc -eq 0 ] && ok "Backup saved on the flash drive: WordLight-backups/$name"
+      ok "The flash drive is unmounted — you can remove it now."
+    else
+      warn "Couldn't unmount the drive. Before removing it:  sudo umount $USB_MOUNT"
+    fi
+  elif [ $rc -eq 0 ]; then
+    ok "Backup saved: $dest/$name"
+    [ "$how" = usb ] && info "The drive is still mounted at $mnt; eject it the usual way before removing it."
+  fi
+  [ $rc -eq 0 ] || { warn "No backup was saved."; return 1; }
+  echo ""
+  echo "Not in the backup: the admin and editor passwords, the session secret, the"
+  echo "converter page's password and the network share passwords."
+  [ "$how" = local ] && echo "To copy it to another computer, it's in Wordlight Home → WordLight-backups."
+  return 0
+}
+
+# ── Restore ──────────────────────────────────────────────────────────────
+#
+# Puts a backup back, part by part, asking first: the Scripts folder (merge,
+# replace or skip), WordLight's settings (ports, user names, theater name,
+# logos), and the Script Converter (program, settings, jobs). Anything it
+# would replace goes into a dated "before-restore" folder first. Backups hold
+# no passwords, so at the end it offers to make new ones (this computer's
+# current passwords keep working if you don't).
+#
+# On a new computer: run the full install first (it asks for passwords and
+# sets everything up), then restore from this menu.
+
+# What restore may copy from a backup's .env. Never SCRIPTS_DIR: that's a path
+# on the computer the backup came from. (Passwords aren't in backups at all.)
+RESTORE_ENV_KEYS=(PORT HTTPS_PORT HTTPS_ENABLED OSC_PORT ADMIN_USERNAME EDITOR_USERNAME SCRIPTS_NAME CONVERTER_URL)
+
+list_backups() { ls -1t -- "$1"/WordLight-backup-*.tar.gz 2>/dev/null | head -15; }   # newest first
+
+RESTORE_FILE="" RESTORE_MOUNTED=no
+restore_unmount() {
+  if [ "$RESTORE_MOUNTED" = yes ]; then
+    sync
+    if sudo umount "$USB_MOUNT"; then ok "The flash drive is unmounted — you can remove it now."
+    else warn "Couldn't unmount the drive. Before removing it:  sudo umount $USB_MOUNT"; fi
+  fi
+  RESTORE_MOUNTED=no
+}
+
+# Asks where the backup is and which one. Sets RESTORE_FILE (and
+# RESTORE_MOUNTED=yes when it mounted a flash drive, read-only).
+pick_backup() {
+  local drives=() line n choice def dev="" size="" fs="" label="" mnt="" dir="" files=() f i
+  RESTORE_FILE="" RESTORE_MOUNTED=no
+  while true; do
+    drives=()
+    while IFS= read -r line; do [ -n "$line" ] && drives+=("$line"); done < <(usb_partitions)
+    echo ""
+    echo "Where is the backup?"
+    echo "  1) On this computer, in $BACKUP_LOCAL_DIR ($(list_backups "$BACKUP_LOCAL_DIR" | wc -l) found)"
+    n=1
+    for line in "${drives[@]}"; do
+      n=$((n + 1))
+      IFS=$'\x1f' read -r dev size fs label mnt <<<"$line"
+      echo "  $n) Flash drive ${label:+\"$label\" }($dev, $size, $fs${mnt:+, mounted at $mnt})"
+    done
+    [ ${#drives[@]} -eq 0 ] && echo "     (No flash drive found. Plug one in, wait a few seconds, then choose R.)"
+    echo "  T) Type the path of a backup file"
+    echo "  R) Look for flash drives again"
+    echo "  0) Cancel"
+    def=1; [ ${#drives[@]} -eq 1 ] && def=2
+    read -rp "Choose [$def]: " choice; choice=${choice:-$def}
+    case "$choice" in
+      0) return 1 ;;
+      r|R) continue ;;
+      t|T)
+        read -rp "Path to the backup file: " f; f="${f/#\~/$HOME}"
+        if [ -f "$f" ]; then RESTORE_FILE="$f"; return 0; fi
+        warn "No file at $f." ;;
+      1) dir="$BACKUP_LOCAL_DIR"; break ;;
+      *)
+        if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 2 ] && [ "$choice" -le "$n" ]; then
+          IFS=$'\x1f' read -r dev size fs label mnt <<<"${drives[$((choice - 2))]}"
+          if [ -n "$mnt" ]; then dir="$mnt/WordLight-backups"
+          else
+            mount_usb "$dev" "$fs" ro || continue
+            RESTORE_MOUNTED=yes; dir="$USB_DIR"
+          fi
+          break
+        fi
+        warn "Not a valid choice." ;;
+    esac
+  done
+  # Backups in the WordLight-backups folder, and on a drive also at its top level
+  files=()
+  while IFS= read -r f; do [ -n "$f" ] && files+=("$f"); done < <(
+    list_backups "$dir"
+    [ "$dir" != "$BACKUP_LOCAL_DIR" ] && list_backups "$(dirname "$dir")"
+  )
+  if [ ${#files[@]} -eq 0 ]; then
+    warn "No backups (WordLight-backup-....tar.gz) there."
+    restore_unmount; return 1
+  fi
+  echo ""
+  echo "Which backup? (newest first)"
+  i=0
+  for f in "${files[@]}"; do
+    i=$((i + 1))
+    echo "  $i) $(basename "$f")  ($(du -h "$f" 2>/dev/null | cut -f1))"
+  done
+  while true; do
+    read -rp "Choose [1]: " choice; choice=${choice:-1}
+    if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "$i" ]; then
+      RESTORE_FILE="${files[$((choice - 1))]}"; return 0
+    fi
+    [ "$choice" = 0 ] && { restore_unmount; return 1; }
+    warn "Not a valid choice (0 cancels)."
+  done
+}
+
+# The value of a JavaScript string constant in a branding file (from save_branding)
+branding_value() {   # branding_value FILE NAME
+  python3 - "$1" "$2" <<'PY' 2>/dev/null
+import ast, re, sys
+for line in open(sys.argv[1], encoding="utf-8"):
+    m = re.match(r"^const " + re.escape(sys.argv[2]) + r" = (.*?);?\s*$", line)
+    if m:
+        print(ast.literal_eval(m.group(1)))
+PY
+}
+
+do_restore() {
+  if wordlight_in_use; then
+    warn "WordLight is in use right now ($WL_NOBODY). A restore changes its files and"
+    warn "restarts it, so not during a show. Try again when nobody is connected."
+    return 1
+  fi
+  if converter_running; then
+    warn "The Script Converter is working on a show right now. Restore once it has"
+    warn "finished (its page shows when), or press its Pause button first."
+    return 1
+  fi
+  [ -f "$BACKUP_TOOL" ] || { warn "setup/backup_tool.py is missing — update WordLight first."; return 1; }
+  step "Restore"
+  echo "This puts back what's in a backup, part by part, asking first. Anything it"
+  echo "would replace is moved to a dated folder first, so nothing is lost."
+  pick_backup || { echo "Nothing restored."; return 1; }
+  local f="$RESTORE_FILE" meta tmp
+  info "Checking the backup (reading it all the way through)..."
+  if ! python3 "$BACKUP_TOOL" check "$f"; then
+    warn "That backup can't be used. Nothing was changed."; restore_unmount; return 1
+  fi
+  meta=$(python3 "$BACKUP_TOOL" info "$f") || { restore_unmount; return 1; }
+  has_part() { grep -q "^part\.$1=" <<<"$meta"; }
+  part_files() { grep "^part\.$1=" <<<"$meta" | cut -d= -f2 | cut -d' ' -f1; }
+  tmp=$(mktemp -d)
+
+  # ── Questions first; nothing changes until "Go ahead?" ──
+  local plan=() sd scripts_mode=skip c now
+  sd=$(scripts_dir)
+  if has_part scripts; then
+    now=0; [ -d "$sd" ] && now=$(find "$sd" -type f 2>/dev/null | wc -l)
+    echo ""
+    echo "Scripts folder: the backup has $(part_files scripts) files; $sd has $now now."
+    echo "  1) Merge: add the backup's files. A file that's different here keeps its"
+    echo "     name, and the backup's copy is added as \"Name (2).txt\""
+    echo "  2) Replace: the folder becomes exactly what's in the backup (today's files"
+    echo "     are moved to the before-restore folder)"
+    echo "  3) Skip: leave the Scripts folder as it is"
+    while true; do
+      read -rp "Choose [1]: " c
+      case "${c:-1}" in
+        1) scripts_mode=merge; plan+=("Scripts folder: merge"); break ;;
+        2) scripts_mode=replace; plan+=("Scripts folder: replace"); break ;;
+        3) scripts_mode=skip; break ;;
+        *) warn "Choose 1, 2 or 3." ;;
+      esac
+    done
+  fi
+
+  local do_settings=no env_keys=() env_vals=() logos=() k old new bk_env bk_editor=""
+  if has_part wordlight; then
+    python3 "$BACKUP_TOOL" extract "$f" --part wordlight --to "$tmp/wl" --mode merge >/dev/null \
+      || { warn "Couldn't read WordLight's settings from the backup."; rm -rf "$tmp"; restore_unmount; return 1; }
+    bk_env="$tmp/wl/env-without-passwords"
+    local diffs=()
+    if [ -f "$bk_env" ]; then
+      for k in "${RESTORE_ENV_KEYS[@]}"; do
+        grep -qE "^[[:space:]]*(export[[:space:]]+)?$k[[:space:]]*=" "$bk_env" || continue
+        new=$(python3 -c "$ENVTOOL_PY" "$bk_env" get "$k" 2>/dev/null)
+        old=$(env_get "$k")
+        [ "$k" = EDITOR_USERNAME ] && bk_editor="$new"
+        if [ "$new" != "$old" ] && env_value_ok "$new"; then
+          env_keys+=("$k"); env_vals+=("$new"); diffs+=("$k: ${old:-(not set)} → ${new:-(empty)}")
+        fi
+      done
+    fi
+    if [ -f "$tmp/wl/branding.txt" ]; then
+      save_branding "$tmp/now-branding.txt"
+      for k in THEATER_NAME SUPPORT_EMAIL; do
+        old=$(branding_value "$tmp/now-branding.txt" "$k"); new=$(branding_value "$tmp/wl/branding.txt" "$k")
+        [ "$old" != "$new" ] && diffs+=("$k: ${old:-(none)} → ${new:-(none)}")
+      done
+    fi
+    for k in "${OWN_FILES[@]}"; do
+      [ -f "$tmp/wl/own/$k" ] && ! cmp -s "$tmp/wl/own/$k" "$PROJECT_DIR/$k" && { logos+=("$k"); diffs+=("$k (logo): different"); }
+    done
+    echo ""
+    if [ ${#diffs[@]} -eq 0 ]; then
+      echo "WordLight settings: the backup's are the same as this computer's."
+    else
+      echo "WordLight settings that differ (this computer → the backup):"
+      printf '    %s\n' "${diffs[@]}"
+      if prompt_yes_no "Use the backup's WordLight settings?" "y"; then
+        do_settings=yes; plan+=("WordLight settings: ${#diffs[@]} change(s)")
+      fi
+    fi
+  fi
+
+  local conv_here="" conv_bk do_code=no do_csettings=no do_jobs=no
+  [ -f "$CONV_DIR/convert.py" ] && conv_here=$(grep -oE '^VERSION = "[^"]+"' "$CONV_DIR/scriptconv/__init__.py" 2>/dev/null | cut -d'"' -f2)
+  [ -f "$CONV_DIR/convert.py" ] && [ -z "$conv_here" ] && conv_here="?"
+  conv_bk=$(grep '^info\.Script Converter=' <<<"$meta" | cut -d= -f2-)
+  if has_part converter/code; then
+    echo ""
+    if [ -z "$conv_here" ]; then
+      echo "Script Converter: not installed here; the backup has ${conv_bk:-a copy}."
+      prompt_yes_no "Install it from the backup?" "y" && do_code=yes
+    elif [ "$conv_here" = "$conv_bk" ]; then
+      echo "Script Converter: $conv_here here and in the backup, so the program stays as it is."
+    else
+      echo "Script Converter: $conv_here here, ${conv_bk:-?} in the backup."
+      prompt_yes_no "Put back the backup's version instead?" "n" && do_code=yes
+    fi
+    if [ "$do_code" = yes ]; then
+      plan+=("Script Converter program ${conv_bk:-} (then its self-tests: about 8 minutes on a Pi 3)")
+      info "Installing its Python packages needs the internet, unless the backup's copy has a wheels folder."
+    fi
+  fi
+  if [ -n "$conv_here" ] || [ "$do_code" = yes ]; then
+    if has_part converter/settings; then
+      prompt_yes_no "Put back the converter's settings (templates, word lists)? Changed files are replaced; today's copies are kept." "y" \
+        && { do_csettings=yes; plan+=("Script Converter settings"); }
+    fi
+    if has_part converter/jobs; then
+      prompt_yes_no "Add the backup's converter jobs ($(part_files converter/jobs) files; shows already here are left alone)?" "y" \
+        && { do_jobs=yes; plan+=("Script Converter jobs (only shows not here yet)"); }
+    fi
+  fi
+
+  echo ""
+  if [ ${#plan[@]} -eq 0 ]; then
+    echo "Nothing chosen, so nothing was restored."
+    rm -rf "$tmp"; restore_unmount; return 0
+  fi
+  echo "Ready to restore from $(basename "$f"):"
+  printf '    %s\n' "${plan[@]}"
+  if ! prompt_yes_no "Go ahead?" "y"; then
+    echo "Nothing restored."; rm -rf "$tmp"; restore_unmount; return 0
+  fi
+
+  # ── Do it ──
+  local keep="$HOME/WordLight-before-restore-$(date +%Y-%m-%d-%H%M%S)" failed=no
+  mkdir -p "$keep" && chmod 700 "$keep" || { warn "Couldn't make $keep. Nothing was changed."; rm -rf "$tmp"; restore_unmount; return 1; }
+  cp -p "$ENV_FILE" "$keep/env" 2>/dev/null      # with passwords: readable by this login only
+  save_branding "$keep/branding.txt"
+
+  if [ "$scripts_mode" != skip ]; then
+    if [ ! -d "$sd" ]; then
+      mkdir -p "$sd" && chmod 2775 "$sd"
+      getent group scriptusers >/dev/null && sudo chgrp scriptusers "$sd"
+    fi
+    info "Scripts folder ($scripts_mode)..."
+    python3 "$BACKUP_TOOL" extract "$f" --part scripts --to "$sd" --mode "$scripts_mode" \
+      --keep-old "$keep/scripts" --shared || failed=yes
+  fi
+
+  if [ "$do_settings" = yes ]; then
+    info "WordLight settings..."
+    for i in "${!env_keys[@]}"; do set_env_value "${env_keys[$i]}" "${env_vals[$i]}" || failed=yes; done
+    [ -f "$tmp/wl/branding.txt" ] && restore_branding "$tmp/wl/branding.txt"
+    for k in "${logos[@]}"; do
+      mkdir -p "$keep/own/$(dirname "$k")" && cp -p "$PROJECT_DIR/$k" "$keep/own/$k" 2>/dev/null
+      cp "$tmp/wl/own/$k" "$PROJECT_DIR/$k" || failed=yes
+    done
+    ok "WordLight settings put back."
+    if printf '%s\n' "${env_keys[@]}" | grep -qx SCRIPTS_NAME && systemctl is-active --quiet smbd 2>/dev/null; then
+      info "The network share still has its old name: menu option 4 sets it up again with the new one."
+    fi
+  fi
+
+  if [ "$do_code" = yes ]; then
+    info "Script Converter program..."
+    if python3 "$BACKUP_TOOL" extract "$f" --part converter/code --to "$tmp/conv" --mode merge >/dev/null; then
+      do_converter "$tmp/conv" || failed=yes
+    else
+      failed=yes
+    fi
+  fi
+  if [ "$do_csettings" = yes ]; then
+    info "Script Converter settings..."
+    python3 "$BACKUP_TOOL" extract "$f" --part converter/settings --to "$CONV_SETTINGS" --mode overwrite \
+      --keep-old "$keep/converter-settings" || failed=yes
+  fi
+  if [ "$do_jobs" = yes ]; then
+    info "Script Converter jobs..."
+    python3 "$BACKUP_TOOL" extract "$f" --part converter/jobs --to "$CONV_JOBS" --mode add || failed=yes
+  fi
+  rm -rf "$tmp"
+  restore_unmount
+
+  # ── Passwords: not in backups ──
+  echo ""
+  echo "Passwords aren't in backups. This computer's current passwords still work;"
+  echo "make new ones here if nobody remembers them."
+  prompt_yes_no "Make a new WordLight admin password?" "n" && do_admin_password
+  if [ -n "$(env_get EDITOR_PASSWORD)" ]; then
+    prompt_yes_no "Make a new editor password?" "n" && do_editor_login
+  elif [ -n "$bk_editor" ]; then
+    prompt_yes_no "The backup had an editor login (\"$bk_editor\"). Set one up here?" "y" && do_editor_login
+  fi
+  if [ -f "$CONV_SETTINGS/converter-password.txt" ] && [ -x "$CONV_VENV/bin/python3" ] && [ "$do_code" != yes ]; then
+    if prompt_yes_no "Make a new Script Converter page password?" "n"; then
+      ( cd "$CONV_DIR" && SCRIPTCONV_SETTINGS="$CONV_SETTINGS" "$CONV_VENV/bin/python3" convert.py password ) || failed=yes
+    fi
+  fi
+  if { [ "$do_csettings" = yes ] || [ "$do_jobs" = yes ]; } && [ "$do_code" != yes ] && pm2_has script-converter; then
+    pm2 restart script-converter >/dev/null 2>&1 && ok "Script Converter restarted."
+  fi
+  restart_wordlight
+
+  echo ""
+  if [ "$failed" = yes ]; then warn "Restore finished, but some parts didn't — see the messages above."
+  else ok "Restore finished."; fi
+  info "What this computer had before is in $keep"
+  info "(its .env copy has the passwords: delete the folder once everything looks right)."
+  [ "$do_code" = yes ] && [ -d "$CONV_DIR.previous" ] && info "The converter that was here before is in $CONV_DIR.previous."
+  [ "$failed" = no ]
+}
+
+backup_menu() {
+  echo ""
+  echo -e "${BOLD}Back up or restore${NC}"
+  echo "  1) Make a backup (to a folder here or a flash drive)"
+  echo "  2) Restore from a backup"
+  echo "  0) Back"
+  local c; read -rp "Choose: " c
+  case "$c" in
+    1) do_backup ;;
+    2) do_restore ;;
+    *) return 0 ;;
+  esac
+}
+
 # ── Status ───────────────────────────────────────────────────────────────
 
 show_status() {
@@ -1183,6 +1750,7 @@ maintenance_menu() {
     echo "  10) Update WordLight"
     echo "  11) Reset the WordLight admin password"
     echo "  12) Run the full setup again (safe — finished steps are skipped)"
+    echo "  13) Back up or restore (WordLight and the Script Converter, to a file or a flash drive)"
     echo "  0) Exit"
     local choice; read -rp "Choose: " choice
     case "$choice" in
@@ -1216,6 +1784,7 @@ maintenance_menu() {
       12)
         info "Re-running full setup — already-completed steps will be skipped."
         return 1 ;;   # signal: fall through to the full install flow below
+      13) backup_menu; pause_for_enter ;;
       0|"") echo "No changes made."; return 0 ;;
       *) warn "Not a valid option." ;;
     esac
