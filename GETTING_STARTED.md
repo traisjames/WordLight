@@ -71,15 +71,16 @@ Type them (or copy and paste them) into the terminal window, then press
 | Item | Notes |
 |---|---|
 | **Raspberry Pi 3B, 3B+, 4 or 5** | A Pi 4 or 5 is faster if you'll use the Script Converter. The 512 MB boards (Pi 3A+ and Zero 2 W) will probably run WordLight, but haven't been tested, can't run the Script Converter and have no Ethernet socket. The Pi 1, Pi 2, Zero and Zero W can't run WordLight. See [Hardware requirements](README.md#hardware-requirements). |
-| **The official power supply for that Pi** | Pi 3: micro-USB, 5 V 2.5 A. Pi 4: USB-C, 5 V 3 A. Pi 5: USB-C, 5 V 5 A. A weak phone charger makes a Pi slow down or crash. |
-| **microSD card, 16 GB or more** | A name brand, marked A1 or A2. 8 GB is the bare minimum. |
-| **A case** | Any case for your Pi model. |
+| **The official power supply for that Pi** | Pi 3: micro-USB, 5 V 2.5 A. Pi 4: USB-C, 5 V 3 A. Pi 5: USB-C, 5 V 5 A. A weak phone charger makes a Pi slow down or crash. For a Pi 3 or 4, a USB charger block you already have works too if it gives at least the current above at 5 V (a 20 W block usually does), with a short, good-quality cable: thin or long cables are the most common cause of low power. On a Pi, run `~/power_report` (setup.sh installs it) to see whether it has had too little power. |
+| **microSD card, 16 GB or more** | A name brand, marked A1 or A2. 32 GB is a common, inexpensive size and leaves room for backups. 8 GB is the bare minimum. |
+| **A case** | Any case for your Pi model. A metal heatsink case cools the Pi silently, with no fan noise near the stage (for a Pi 3B or 3B+, for example, the Geekworm "Armor" aluminum case). If you'll add the OLED display, check that the case leaves the Pi's 40 pins reachable. |
 | **Ethernet cable** | From the Pi to your Wi-Fi router. Ethernet is more reliable than the Pi's own Wi-Fi. |
 | **A Wi-Fi router or access point for the audience** | Big enough for the number of phones you expect. Don't use the Pi's own Wi-Fi as the hotspot: it only handles about 8 devices. |
 | **A laptop or tablet for the caption operator** | Any current web browser. |
 | **A computer with an SD card reader** | To set up the card (step 2). A USB card reader works. |
 | Optional: **a small UPS** | Keeps the Pi running through a power blip and protects the SD card. |
-| Optional: **an OLED display with 4 buttons** | Shows the Pi's address and QR codes. See [OLED status display](#oled-status-display). |
+| Optional: **an OLED display with 4 buttons** | Shows the Pi's address and QR codes, with a button to page through them and one to restart the Pi. The wiring table in [OLED status display](#oled-status-display) is for a 0.96-inch, 128×64 module with an SSD1315 chip, an I²C connection and 4 keys in one row of pins (VCC, GND, SDA, SCL, K1-K4), such as AITRIP's, often sold in packs of 5. Other 0.96-inch I²C displays with an SSD1306 or SSD1315 chip show the screen too, but without the keys you get no page button or restart button, and their pins may be in a different order. |
+| Optional, with the display: **female-to-female jumper wires** | Short (10 cm) "Dupont" wires with a socket at each end, to connect the display's pins to the Pi's pins without soldering. You need 8; they come in multicolored packs of 40, and different colors make the wiring easier to check. |
 
 ### Not using a Raspberry Pi?
 
@@ -101,8 +102,6 @@ A Mac can run WordLight too (by hand, without the setup script). See
 ---
 
 ## 2. Put Raspberry Pi OS on the microSD card
-
-<!-- photo: docs/images/sd-card-slot.jpg -->
 
 You'll use **Raspberry Pi Imager**, the official free tool. It copies the
 operating system onto the card and sets the Pi up so you can reach it
@@ -143,6 +142,9 @@ over the network. No keyboard or screen on the Pi is needed.
 
 1. Put the microSD card into the Pi (on a Pi 3 the slot is underneath, at
    the end opposite the USB sockets).
+
+   <img src="docs/images/sd-card-slot.jpg" alt="The end of a Raspberry Pi 3 in a black metal heatsink case, with a microSD card in the slot under the board" width="280">
+
 2. Plug the Ethernet cable into the Pi and into your Wi-Fi router.
 3. Plug in the power supply last. There's no power switch: the Pi starts
    as soon as it has power.
@@ -527,15 +529,17 @@ your name and your settings.
 
 ### OLED status display
 
-<!-- photo: docs/images/oled-wiring.jpg -->
-
 A 128×64 I2C OLED screen (SSD1306 or SSD1315) with 4 buttons shows the
 Pi's address and QR codes for the home, reader and backstage pages, so
 you can find the Pi without a laptop.
 
 Wire it to the Pi's 40-pin header **with the Pi switched off**. Pin
-numbers are the header positions (pin 1 is the corner nearest the SD
-card on a Pi 3):
+numbers are the header positions. Pin 1 is in the inner row (toward the
+middle of the board), at the end away from the USB sockets. The inner row
+has the odd numbers (1, 3, 5, ...) and the outer row, along the board's
+edge, has the even ones (2, 4, 6, ...). So pin 11 is the 6th pin of the
+inner row counting from that end, and pin 36 is the 3rd pin of the outer
+row counting from the USB end.
 
 | Display | Pi header pin |
 |---|---|
@@ -547,6 +551,9 @@ card on a Pi 3):
 | K2, K3 (not used yet) | 13, 15 (GPIO 27, 22) |
 | K4 (wake; hold 3 s to restart the Pi) | 36 (GPIO 16) |
 
+<img src="docs/images/oled-wiring-pi.jpg" alt="The jumper wires on the Pi's pins, labeled: K4 near the USB end, K1, then GND, VCC, SDA and SCL at the far end" width="520">
+<img src="docs/images/oled-wiring-oled.jpg" alt="The same wires on the display's pins, labeled K1, K4, SDA, SCL, VCC and GND" width="360">
+
 The buttons connect their pin to ground when pressed. If your module is
 wired differently, the pin numbers are near the top of `oled_display.py`.
 
@@ -554,12 +561,15 @@ Then answer `y` to the OLED question in the setup (or choose
 **Run the full setup again** from the menu if it's already installed).
 The setup turns on I2C, which needs one restart, and tells you when.
 
-<!-- photo: docs/images/assembled-case.jpg -->
+<img src="docs/images/assembled-screen.jpg" alt="The display in a holder standing over the Pi's USB sockets, its four buttons beside the screen" width="300">
+
+The holder in the photo is 3D printed (PLA, no supports). The print files
+and instructions are in [hardware/oled-holder](hardware/oled-holder/).
 
 **K1** steps through the pages; a short press of **K4** wakes the screen.
-Holding K4 for 3 seconds restarts the Pi, but only after a one-time
-permission step described under "Reboot setup" at the top of
-`oled_display.py`.
+Holding K4 for 3 seconds restarts the Pi: setup.sh gives the display that
+permission. (On a computer set up by hand, see "Reboot setup" at the top
+of `oled_display.py`.)
 
 ### Network shares
 

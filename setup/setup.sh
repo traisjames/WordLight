@@ -555,15 +555,78 @@ EOF
   return $rc
 }
 
-boot_start_on() { systemctl is-enabled --quiet "pm2-$ME" 2>/dev/null; }
+# pm2's boot service (pm2-<login>) runs "pm2 resurrect" at startup, using the
+# full path of the pm2 that was installed when the service was made. If Node
+# is installed again another way (it moved from nvm to NodeSource in 0.9.1),
+# that path is gone: the service is still "enabled" but fails at every boot
+# (status 203/EXEC) and nothing starts. So "on" also checks the path.
 
-do_boot_start() {   # do_boot_start on|off
+# The program the boot service runs (from its ExecStart line), or nothing
+pm2_boot_program() {
+  local unit
+  unit=$(systemctl show -p FragmentPath --value "pm2-$ME" 2>/dev/null)
+  [ -n "$unit" ] && [ -f "$unit" ] || return 0
+  sed -n 's/^ExecStart=\([^ ]*\).*/\1/p' "$unit" | head -1
+}
+
+# on: enabled, and it runs the pm2 this computer has now
+# broken: enabled, but its program is gone or is a different pm2
+# off: not enabled
+boot_start_state() {
+  systemctl is-enabled --quiet "pm2-$ME" 2>/dev/null || { echo off; return 0; }
+  local prog cur
+  prog=$(pm2_boot_program)
+  cur=$(command -v pm2 2>/dev/null)
+  if [ -z "$prog" ] || [ ! -x "$prog" ]; then echo broken; return 0; fi
+  if [ -n "$cur" ] && [ "$(readlink -f "$prog")" != "$(readlink -f "$cur")" ]; then echo broken; return 0; fi
+  echo on
+}
+boot_start_on() { [ "$(boot_start_state)" = on ]; }
+boot_start_label() {
+  case "$(boot_start_state)" in
+    on) echo "on" ;;
+    broken) echo "BROKEN: it's set up for a pm2 that isn't here any more" ;;
+    *) echo "off" ;;
+  esac
+}
+
+# How many apps pm2 is running now (0 if pm2 isn't running)
+pm2_app_count() {
+  pm2 jlist 2>/dev/null | python3 -c 'import json, sys
+try: print(len(json.load(sys.stdin)))
+except ValueError: print(0)' 2>/dev/null || echo 0
+}
+
+# Saves pm2's app list for the next boot, but never an empty list over a
+# saved one: after a reboot with a broken boot service pm2 runs nothing, and
+# saving then would lose the list. In that case it brings the list back first.
+pm2_save_safely() {
+  if [ "$(pm2_app_count)" = 0 ]; then
+    if [ -s "$HOME/.pm2/dump.pm2" ]; then
+      info "Nothing is running under pm2 right now: starting the saved apps first..."
+      pm2 resurrect >/dev/null 2>&1
+    fi
+    [ "$(pm2_app_count)" = 0 ] && return 0     # still nothing: keep the saved list as it is
+  fi
+  pm2 save >/dev/null 2>&1
+}
+
+do_boot_start() {   # do_boot_start on|off|repair
   local pm2bin; pm2bin=$(command -v pm2) || { warn "pm2 isn't installed yet."; return 1; }
-  if [ "$1" = on ]; then
-    pm2 save >/dev/null 2>&1
-    sudo env PATH="$PATH" "$pm2bin" startup systemd -u "$ME" --hp "$HOME" >/dev/null 2>&1 \
-      && ok "WordLight (and anything else pm2 runs) starts by itself after a reboot." \
-      || warn "Couldn't set up start on boot. Run 'pm2 startup' and follow what it says."
+  if [ "$1" = repair ]; then
+    # Take the old service away (the current pm2 can remove it by name),
+    # then make a new one that points at this pm2
+    sudo env PATH="$PATH" "$pm2bin" unstartup systemd -u "$ME" --hp "$HOME" >/dev/null 2>&1
+  fi
+  if [ "$1" = on ] || [ "$1" = repair ]; then
+    pm2_save_safely
+    if sudo env PATH="$PATH" "$pm2bin" startup systemd -u "$ME" --hp "$HOME" >/dev/null 2>&1 && boot_start_on; then
+      if [ "$1" = repair ]; then ok "Start on boot fixed: it now uses $pm2bin."
+      else ok "WordLight (and anything else pm2 runs) starts by itself after a reboot."; fi
+    else
+      warn "Couldn't set up start on boot. Run 'pm2 startup' and follow what it says."
+      return 1
+    fi
   else
     sudo env PATH="$PATH" "$pm2bin" unstartup systemd -u "$ME" --hp "$HOME" >/dev/null 2>&1 \
       && ok "Start on boot is off: after a reboot, start things with  pm2 resurrect" \
@@ -1635,7 +1698,7 @@ for a in apps:
     print("  %-18s %-9s up %dh %dm  restarts %s" % (name, status, mins // 60, mins % 60, e.get("restart_time", 0)))
 if not apps:
     print("  nothing running under pm2")'
-  echo "Start on boot: $(boot_start_on && echo on || echo off)"
+  echo "Start on boot: $(boot_start_label)"
   if [ -f "$CONV_DIR/scriptconv/__init__.py" ]; then
     echo "Converter:  $(grep -oE '^VERSION = "[^"]+"' "$CONV_DIR/scriptconv/__init__.py" | cut -d'"' -f2) in $CONV_DIR"
   else
@@ -1717,7 +1780,7 @@ system_menu() {
     echo "  1) Time zone            (now: $(timedatectl show -p Timezone --value 2>/dev/null))"
     echo "  2) Computer name        (now: $(hostname))"
     echo "  3) Wi-Fi country        $(is_pi && echo '' || echo '(Raspberry Pi only)')"
-    echo "  4) Start on boot        (now: $(boot_start_on && echo on || echo off))"
+    echo "  4) Start on boot        (now: $(boot_start_label))"
     echo "  5) Change the password of this login ($ME)"
     echo "  0) Back"
     local c; read -rp "Choose: " c
@@ -1725,8 +1788,11 @@ system_menu() {
       1) do_timezone ;;
       2) do_hostname ;;
       3) do_wifi_country ;;
-      4) if boot_start_on; then prompt_yes_no "Turn start on boot OFF?" "n" && do_boot_start off
-         else do_boot_start on; fi ;;
+      4) case "$(boot_start_state)" in
+           on)     prompt_yes_no "Turn start on boot OFF?" "n" && do_boot_start off ;;
+           broken) prompt_yes_no "Fix start on boot (make it use this computer's pm2)?" "y" && do_boot_start repair ;;
+           *)      do_boot_start on ;;
+         esac ;;
       5) passwd ;;
       *) return 0 ;;
     esac
@@ -1737,6 +1803,9 @@ maintenance_menu() {
   while true; do
     echo ""
     echo -e "${BOLD}🔦 WordLight setup — this computer is already set up.${NC}"
+    if [ "$(boot_start_state)" = broken ]; then
+      warn "Start on boot is BROKEN: after a reboot nothing would start. Fix it with 2, then 4."
+    fi
     echo ""
     echo "  1) Status"
     echo "  2) System settings (time zone, computer name, Wi-Fi country, start on boot, password)"
@@ -2201,9 +2270,18 @@ else
   ok "WordLight already started with pm2 — skipping. Use 'pm2 restart wordlight' to apply .env changes."
 fi
 
+if step_done "boot-start-set" && [ "$(boot_start_state)" = broken ]; then
+  # Checked on every run: installing Node again can leave the service
+  # pointing at a pm2 that's gone
+  warn "Start on boot was set up for a pm2 that isn't here any more: fixing it."
+  do_boot_start repair
+fi
 if ! step_done "boot-start-set"; then
-  if boot_start_on; then
-    pm2 save >/dev/null 2>&1; ok "WordLight starts by itself after a reboot (already set up)."
+  if [ "$(boot_start_state)" = broken ]; then
+    warn "Start on boot was set up for a pm2 that isn't here any more: fixing it."
+    do_boot_start repair
+  elif boot_start_on; then
+    pm2_save_safely; ok "WordLight starts by itself after a reboot (already set up)."
   elif prompt_yes_no "Start WordLight by itself after every reboot? (recommended for show computers)" "y"; then
     do_boot_start on
   else

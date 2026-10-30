@@ -42,6 +42,10 @@ wordlight/                          ← project root (e.g. /home/wordlight/CC_Se
 │   ├── motd-simple.template        ← login message, stats only
 │   └── power_report                ← throttle/temperature check (chmod +x)
 │
+├── docs/
+│   └── images/                     ← photos for GETTING_STARTED.md (resized, location data removed)
+├── hardware/
+│   └── oled-holder/                ← 3D-printable OLED display holder (STL, 3MF, README)
 ├── load-test/                      ← stress-testing tools
 │   ├── load_test.js                ← runs on your Mac, NOT the Pi
 │   ├── monitor.sh                  ← runs ON the Pi during a test (pidstat + lsof)

@@ -1,3 +1,79 @@
+# WordLight 0.9.5: start on boot that can't silently break; photos and the display holder in the guide (2026-10-30)
+
+Built on the GitHub copy at commit 3d92d15 (0.9.4).
+
+## Files (same folders as the repo)
+
+| File | Goes to | New or changed |
+|---|---|---|
+| `setup/setup.sh` | setup/ | changed: start on boot is checked, shown and repaired |
+| `docs/images/*.jpg` | docs/images/ | new: four photos for the guide |
+| `hardware/oled-holder/` | hardware/oled-holder/ | new: the 3D-printable display holder (STL, 3MF, renders, README) |
+| `GETTING_STARTED.md` | project root | changed: photos, shopping list, pin directions, K4 wording |
+| `package.json`, `package-lock.json` | project root | changed: version 0.9.5 |
+| `README.md`, `FILE_MAP.md`, `CHANGES.md` | project root | changed |
+
+No new npm packages. Update with setup.sh's menu 10. If the menu then
+says start on boot is broken, choose 2, then 4.
+
+## What changed
+
+**Start on boot could break without anyone knowing.** pm2's boot service
+runs `pm2 resurrect` using the full path of the pm2 that was installed when
+the service was made. When Node moved from nvm to NodeSource (0.9.1), that
+path disappeared: the service stayed "enabled" but failed at every boot
+(systemd status 203/EXEC), so after a reboot nothing started, not WordLight,
+the converter or the OLED display, which kept showing its rebooting screen.
+setup.sh only asked systemd whether the service was enabled, so it reported
+start on boot as on. Found on the production Pi when holding K4 rebooted it.
+
+- Start on boot now has three states: on, off, and **broken** (enabled, but
+  its program is gone or is a different pm2 from the one installed now).
+- A broken one shows as a warning at the top of setup.sh's menu, in Status,
+  and in System settings, where 4 offers to fix it: the old service is
+  taken away and a new one made for this computer's pm2.
+- The full setup now checks it on every run, not only the first time, and
+  repairs it by itself.
+- pm2's app list is never saved empty over a saved one. After a reboot with
+  a broken service pm2 runs nothing, and turning start on boot on used to
+  save that empty list first; now it brings the saved apps back first.
+
+**The guide has photos.** The SD card slot (under step 3, where the card
+goes in), the display's wiring on the Pi and on the display (after the pin
+table, with labels), and the finished Pi with the display. They're resized
+and have their location data removed. The OLED section also says how to
+find the pins without reading the board: pin 1 is in the inner row at the
+end away from the USB sockets, odd pins on the inner row, even pins on the
+outer row.
+
+**A 3D-printable display holder,** in `hardware/oled-holder/`: two PLA parts
+printed flat with no supports, held together by friction, with legs that
+slide into the gaps between the USB sockets. Designed in Fusion 360 by
+Travis Edrington; tested on a Pi 3B in a Geekworm Armor case. The guide
+links to it under the assembled photo.
+
+**Shopping list:** what to look for in a case (a metal heatsink case cools
+silently; leave the 40 pins reachable for the display), exactly which
+display the wiring table fits (0.96-inch, 128×64, SSD1315, I²C, four keys)
+and what a display without keys lacks, a new row for the jumper wires, a
+note that a USB charger you already have can do with a short good cable
+(check with `~/power_report`), and 32 GB as a common SD card size. The K4
+paragraph no longer says the reboot needs a manual permission step:
+setup.sh has added it since 0.9.2.
+
+## Tests
+
+- On the test VM (Ubuntu 24.04, 0.9.3 + this setup.sh): the pm2 boot
+  service pointed at a pm2 that doesn't exist, as on the production Pi, and
+  pm2 stopped completely, as after such a reboot. The menu warned at once;
+  Status and System settings showed it as broken; the saved app list stayed
+  untouched. Menu 2 → 4 brought the saved apps back, then made a new
+  service for `/usr/bin/pm2`; the saved list still had both apps. A real
+  reboot afterwards: the service ran (result success) and WordLight and the
+  converter came back by themselves.
+- On the production Pi, by hand on 2026-10-23: the same repair (unstartup,
+  startup, save), then a K4 reboot brought everything back.
+
 # WordLight 0.9.4: Download a backup from the logging page (2026-10-23)
 
 Built on the GitHub copy at commit 43f3eef (0.9.3).
