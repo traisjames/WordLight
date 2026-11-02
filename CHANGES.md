@@ -1,3 +1,109 @@
+# WordLight 0.9.6: the whole script is no longer public; reader IDs are cleaned and capped (2026-11-01)
+
+Built on the GitHub copy at commit 0867260 (0.9.5).
+
+## Files (same folders as the repo)
+
+| File | Goes to | New or changed |
+|---|---|---|
+| `server.js` | project root | changed: `/api/state` needs the admin login; reader IDs are cleaned and capped (about 50 lines) |
+| `security-test/test-readers.js`, `security-test/server-probe.js` | security-test/ | new: a test for what an audience device can do to the server |
+| `security-test/README.md` | security-test/ | changed |
+| `package.json`, `package-lock.json` | project root | changed: version 0.9.6 |
+| `README.md`, `CHANGES.md` | project root | changed |
+
+No new npm packages. Update with setup.sh's menu 10; nothing else to run.
+
+## What changed
+
+Both fixes came out of testing the phone reader apps against the server with
+hostile input: a caption script, and reader names, built to cause trouble.
+
+**The whole script was public.** `GET /api/state` returns the operator's
+full state, and that includes every line of the loaded script. It needed no
+login, so anyone on the venue network could download the entire script (up
+to 10 MB) by opening that address in a browser. The README even listed it as
+needing no login. Audience phones never need it: the server sends each one
+the few lines it shows as soon as it connects.
+
+- `/api/state` now needs the admin login, like `/api/log`. Anyone else gets
+  a 401. The README table says so.
+- Nothing in this project used it (the pages, setup.sh, the OLED display,
+  the load test). The iPhone and Android reader apps (separate projects)
+  built before 2026-11-01 asked for it once when connecting; they cope with
+  the refusal and show the lines the server sends, as they always did.
+
+**Reader IDs were taken on trust.** Every phone and tablet tells the server
+its own ID in the address it connects with, and the server kept whatever it
+was given for as long as it ran. Any device on the network could send very
+long IDs, and an ID with a line break in it could start a fake row in the
+CSV log. In a test, 1,000 readers with 12,000-character IDs left the server
+holding 12.8 MB more live memory after every one of them had gone. Now
+`cleanReaderId()`:
+
+- removes control characters, line breaks included;
+- keeps at most 64 characters (the longest real ID is 45: a prefix plus a
+  40-character device name);
+- treats an ID that is missing, or not text, as no ID: that reader still
+  gets the captions and counts as a session, but is not among the unique
+  readers or in the log;
+- copies what is left into a string of its own. Without the copy, memory
+  did not go down: Node's engine (V8) keeps the whole original string alive
+  behind a short piece cut from it.
+
+**A limit on remembered IDs.** `MAX_UNIQUE_READER_IDS` is 500,000 (the
+biggest load test used 100,000). Past it, new IDs are not stored or counted
+as unique readers; those readers still get the captions and count as
+sessions. One warning goes to `pm2 logs wordlight`, and Reset on the
+logging page starts the count again.
+
+## Tests
+
+New: `security-test/test-readers.js`. It starts the real server.js on a
+throwaway loopback port (its own ports, a throwaway password, no .env or
+certificates) and plays the part of audience devices:
+
+```bash
+cd security-test
+node test-readers.js
+```
+
+It takes about 5 seconds; `--quick` skips the memory test. `server-probe.js`
+beside it is a small preload that keeps the test server on the loopback
+address, lowers the limit for the limit check and reports the server's
+memory. The test checks:
+
+- `/api/state` with no login: 401 and nothing of the script in the answer
+  (before: 200 and the whole 400-line test script, 54,687 bytes). The editor
+  login is refused too, the admin login still gets the full state, and a
+  reader is still sent the current line when it connects, and only the few
+  lines it shows.
+- Readers: all six kinds of ID and one with no known prefix are counted under
+  their own kind, the backstage kinds join the backstage room, renamed
+  devices (spaces, &, accents, an emoji, Japanese) are counted and come
+  through the CSV log intact, and a reader with no ID, an empty ID or an ID
+  sent twice still gets its captions and crashes nothing.
+- The CSV log: a line break in an ID no longer starts a row (before: 14 rows
+  for 13 readers), no control character reaches it, and an ID of 10,000
+  characters is kept to 64 (before: all 10,010).
+- Memory: after 1,000 readers with 12,000-character IDs, and 1,000 with
+  normal IDs in very long addresses, the server's live memory (after garbage
+  collection) grew 1.3 and 0.3 MB. Before: 12.8 and 11.9 MB. The limit in
+  the test is 4 MB.
+- The limit, lowered to 5 for the test: 9 readers connect, 5 are counted, all
+  9 get their captions, one warning is logged, and Reset starts the count
+  again.
+
+All 36 checks pass on this version. Run against 0.9.5, 9 of 31 fail (the
+ones above that say "before"). With one fix taken out of a copy at a time
+(the copy of the ID string, the removal of control characters, the login on
+`/api/state`, the limit), exactly that fix's checks fail.
+
+`node --check server.js` is clean and `security-test/test-parser.js` still
+finds nothing.
+
+Not yet run on the test VM or the production Pi.
+
 # WordLight 0.9.5: start on boot that can't silently break; photos and the display holder in the guide (2026-10-30)
 
 Built on the GitHub copy at commit 3d92d15 (0.9.4).

@@ -10,7 +10,7 @@ audience — the theater name, colors, and logo — is fully configurable per
 installation (see [Branding your installation](#branding-your-installation)
 below); nothing in this project is tied to any specific venue.
 
-**Version 0.9.5.** What changed, version by version: `CHANGES.md`.
+**Version 0.9.6.** What changed, version by version: `CHANGES.md`.
 
 **New to this?** [GETTING_STARTED.md](GETTING_STARTED.md) walks through
 everything from the shopping list to the first show, with no Linux
@@ -36,7 +36,7 @@ knowledge needed.
 
 | URL | Description | Auth? |
 |-----|-------------|-------|
-| `/api/state` | Current caption state (JSON) | No |
+| `/api/state` | Full caption state (JSON), including the whole script. Readers never get this: over the socket they receive only the few lines they show | ✅ Yes |
 | `/api/qr` | QR code PNG for the reader URL | No |
 | `/api/auth/status` | Returns `{authenticated: true/false}` for the current session | No |
 | `/api/log` | Reader session statistics | ✅ Yes |
@@ -436,7 +436,7 @@ npm start
 
 You should see:
 ```
-✅ WordLight 0.9.5 server running!
+✅ WordLight 0.9.6 server running!
    HTTPS:    generating self-signed certificate for: 192.168.1.42, 127.0.0.1
    HTTPS:    certificate generated successfully
    Home:     https://192.168.1.xx:3443/home

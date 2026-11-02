@@ -7,6 +7,11 @@ The threat model is simple and realistic: **someone hands the operator a
 script file.** Nobody inspects a few hundred lines of dialogue before a
 show. If a caption file can run code in every audience phone, that matters.
 
+A second test, `test-readers.js`, covers the other public door: **someone on
+the venue network pretends to be an audience phone.** It checks that such a
+device can't read the script, fill the server's memory, or forge rows in the
+session log. See "Running the reader test" below.
+
 ## Where this folder goes
 
 `security-test/` sits at the **project root, beside `public/`** — not inside
@@ -17,9 +22,11 @@ relative position matters:
 wordlight/
 ├── public/
 │   └── global.js          ← harness reads the real parser from here
-├── server.js
+├── server.js              ← test-readers.js runs the real one
 └── security-test/
     ├── test-parser.js
+    ├── test-readers.js
+    ├── server-probe.js    ← a small preload that test-readers.js needs
     ├── README.md
     └── scripts/           ← test files live here, not beside test-parser.js
         ├── 01-xss-injection.txt
@@ -94,9 +101,66 @@ The reverse case (more opens than closes) *would* matter, because styling
 would bleed past the end of the line. The parser's auto-close loop already
 prevents it, and the harness checks for it specifically.
 
+## Running the reader test
+
+```bash
+cd security-test
+node test-readers.js
+```
+
+A reader (an audience phone or tablet) needs no login and chooses its own ID in
+the address it connects with, so anyone on the venue network can write a
+program that pretends to be one. This test starts the real `server.js` on a
+throwaway port and checks what such a device can do. It takes about five
+seconds. Exit code 0 = all clear, 1 = a check failed, 2 = it couldn't run.
+
+| What | What is checked |
+|---|---|
+| `GET /api/state` | Refused without a login, and for the editor login; the admin login still gets the full state. A reader is sent the few lines it shows, never the script. (A marker hidden in a line far from the one on show tells whether any of the script came back; nothing of the script is printed) |
+| Ordinary IDs | All six kinds of ID, and one with no known prefix, are counted under their own kind; the backstage kinds join the backstage room; renamed devices (spaces, `&`, accents, an emoji, Japanese) are counted and come through the CSV log intact |
+| Odd and hostile IDs | No ID, an empty ID and an ID sent twice still get their captions and crash nothing. A line break or other control characters in an ID can't start a row of their own in the CSV log. An ID of 10,000 characters is kept to `MAX_READER_ID_LENGTH` |
+| Memory | 1,000 readers with 12,000-character IDs, then 1,000 with normal IDs in very long addresses. Afterwards the server's live memory (measured after a garbage collection, not the size the operating system shows) must have grown by under 4 MB. This is what catches an ID that was cut short but still keeps its long original alive |
+| The limit | With `MAX_UNIQUE_READER_IDS` lowered to 5 for this one run: 9 readers connect, 5 are counted, all 9 get their captions, one warning is logged, and Reset starts the count again |
+
+`node test-readers.js --quick` skips the memory test.
+`node test-readers.js path/to/server.js` tests another copy, for example an
+older version (the rest of the project has to be around it).
+
+**Nothing real is touched.** The server runs in an empty folder (so it finds no
+`.env`), with its own ports, a throwaway admin password, no certificates and an
+empty Scripts folder, and it listens on the loopback address only. The script
+it is given is made up. `server-probe.js` is what makes that possible without
+changing `server.js`: a small preload that keeps the server on the loopback
+address, lowers the limit for the limit check, and reports the server's memory.
+
+It needs `npm install` to have been run in the project folder (it uses the `ws`
+package that comes with socket.io) and Node 22 or newer. It reads the limits and
+the kinds of reader out of `server.js`, so it follows them when they change.
+
+### Results as of the last run
+
+```
+WordLight 0.9.6   PASS — all 36 checks passed
+                  (live memory grew 1.3 MB and 0.3 MB; the limit is 4 MB)
+
+WordLight 0.9.5   FAIL — 9 of 31 checks failed
+                  GET /api/state answered anyone with the whole script
+                  a line break in an ID added a row to the CSV log
+                  a 10,000-character ID was kept whole
+                  live memory grew 12.8 MB and 11.9 MB
+                  no limit on remembered IDs
+```
+
+To make sure the checks can fail, each fix was taken out of a copy of 0.9.6 in
+turn, and the test failed on exactly that fix. Without the copy of the ID
+string (the cut-down ID still keeps the long original in memory) both memory
+checks fail. Without removing control characters the CSV checks fail. With
+`/api/state` public again its three checks fail. Without the limit the limit
+checks fail.
+
 ## What these tests do NOT cover
 
-The harness tests the parser in isolation. Two areas need separate
+`test-parser.js` tests the parser in isolation. Two areas need separate
 attention:
 
 ### 1. Server-side input validation
@@ -163,6 +227,8 @@ run slow.
 
 | File | Covers |
 |---|---|
+| `test-readers.js` | What an audience device can do to the server: read the script, fill its memory, forge log rows (see "Running the reader test") |
+| `server-probe.js` | Preload for the throwaway server `test-readers.js` starts: loopback only, a lower limit for one check, a memory report |
 | `01-xss-injection.txt` | Script tags, event handlers, attribute breaks, entity encoding, filter-bypass shapes |
 | `02-unicode-stress.txt` | RTL override, zero-width chars, Zalgo, emoji/ZWJ, surrogate pairs, homoglyphs, mixed scripts |
 | `03-malformed-tags.txt` | Unclosed/excess/nested colour tags, unknown tag names, tag-like dialogue text |

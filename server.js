@@ -647,14 +647,54 @@ function getReaderBreakdown() {
   return { ...breakdownCounts };   // shallow copy — cheap, fixed small size
 }
 
+// A reader's ID is chosen by the reader itself (it's in the connection URL), so
+// nothing about it can be trusted. Left alone, anyone on the network could
+// connect with IDs of any length and the server would keep every one for the
+// whole run: 1,000 readers with 12,000-character IDs left a test server holding
+// 12.8 MB more live memory after every one of them had gone, and an ID with a
+// line break in it could forge a row in the CSV log. security-test/
+// test-readers.js checks all of this.
+//
+// Real IDs are a prefix plus a UUID (41 characters), or a prefix plus the
+// device name the iOS and Android apps allow (up to 40 characters).
+const MAX_READER_ID_LENGTH  = 64;
+// More distinct IDs than this can't be an audience, so past it new IDs are no
+// longer remembered (they still get captions and still count as sessions). The
+// biggest load test that has been run used 100,000 (see load-test/).
+const MAX_UNIQUE_READER_IDS = 500000;
+let   readerCapWarned       = false;
+
+// The ID as a safe string, or null when there is no usable one. Control
+// characters are dropped (they would break the CSV log), the length is capped,
+// and anything that isn't a string (no ID sent) counts as no ID.
+function cleanReaderId(raw) {
+  if (typeof raw !== 'string') return null;
+  const id = raw.replace(/[\u0000-\u001f\u007f]/g, '').slice(0, MAX_READER_ID_LENGTH);
+  if (id.length === 0) return null;
+  // Copy it into a string of its own. In V8, cutting a long string short gives a
+  // "slice" that keeps the WHOLE original alive, so without this copy every
+  // stored ID would still pin the 8,000 characters (or the whole URL) it was cut
+  // from, and the cap above would not free any memory.
+  return Buffer.from(id, 'utf8').toString('utf8');
+}
+
 /**
  * Register a reader ID as seen. Returns true if this was a NEW unique ID
  * (and updates uniqueReaderIds + breakdownCounts accordingly), or false if
  * this ID was already known (e.g. a reconnect) — in which case nothing
- * needs to change, keeping the common case just as cheap as before.
+ * needs to change, keeping the common case just as cheap as before. Also false
+ * once MAX_UNIQUE_READER_IDS are remembered (see above).
  */
 function registerReader(readerId) {
   if (uniqueReaderIds.has(readerId)) return false;
+  if (uniqueReaderIds.size >= MAX_UNIQUE_READER_IDS) {
+    if (!readerCapWarned) {
+      readerCapWarned = true;
+      console.warn(`[readers] ${MAX_UNIQUE_READER_IDS.toLocaleString()} unique reader IDs are remembered: ` +
+                   `new ones are no longer counted (the logging page's Reset starts the count again).`);
+    }
+    return false;
+  }
   uniqueReaderIds.add(readerId);
   const prefix = READER_PREFIXES.find(p => readerId.startsWith(p));
   breakdownCounts[prefix ? prefix : 'other']++;
@@ -663,7 +703,11 @@ function registerReader(readerId) {
 
 // --- API ----------------------------------------------------------------------
 
-app.get('/api/state', (req, res) => res.json(captionState));
+// The operator's full state, including the ENTIRE script. Readers never get the
+// script: over the socket they receive only the few lines they show
+// (readerPayload). So this is the admin login only. It used to be public, which
+// let anyone on the network download the whole script (up to 10 MB) from it.
+app.get('/api/state', requireAuth, (req, res) => res.json(captionState));
 
 // QR code image for the reader URL — used on the home page
 app.get('/api/qr', async (req, res) => {
@@ -822,6 +866,7 @@ app.get('/api/log/export', requireAuth, (req, res) => {
 
 app.post('/api/log/reset', requireAuth, (req, res) => {
   uniqueReaderIds.clear();
+  readerCapWarned   = false;
   breakdownCounts   = zeroBreakdown();
   totalSessionCount = 0;
   sessionLog        = [];
@@ -1061,7 +1106,9 @@ io.on('connection', (socket) => {
   // NOT read from handshake.query here, so a client can't claim a type it
   // wasn't granted.
   const clientType = socket.data.clientType;
-  const readerId   = socket.handshake.query.readerId;
+  // Chosen by the client, so cleaned first (see cleanReaderId): a string of at
+  // most MAX_READER_ID_LENGTH printable characters, or null.
+  const readerId   = cleanReaderId(socket.handshake.query.readerId);
 
   // -- Reader ------------------------------------------------------------------
   if (clientType === 'reader') {
